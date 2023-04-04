@@ -40,7 +40,7 @@ Ye(future)-maktum
 
 Sahat 시
 Rumih (황홀함,정신적으로) 노래하다,빠지다
-Banâm 남자?
+Banâm 선생, 사부
 Bazi (가루) 뿌리다
 Maktu 쓰다
 Taur (죽) 쑤다
