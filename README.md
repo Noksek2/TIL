@@ -48,7 +48,8 @@ Gubz 일어나다
 Kucheg 작다
 Kamal 장군
 Jabal 지구
-Nurei 세상, 사는 넓은 곳
+Nure 세상, 사는 넓은 곳
+Izad 하늘(추상적)
 Tubuz 두껍다
 Kutum 딱딱
 Yezel 薄い
