@@ -2,8 +2,18 @@
 LRESULT CALLBACK WndProc(HWND hwnd,UINT msg, WPARAM wp,LPARAM lp){
 	switch (msg) {
 	case WM_PAINT:
-
+	{
+		PAINTSTRUCT ps;
+		HDC hdc=BeginPaint(hwnd,&ps);
+		TextOut(hdc,200,100,L"ong",3);
+		EndPaint(hwnd,&ps);
+	}
 		return 0;
+	case WM_SIZE:
+	{
+			
+	}
+	return 0;
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return 0;
@@ -18,7 +28,6 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 	win.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 	win.lpfnWndProc = WndProc;
 	win.lpszClassName = L"class";
-	win.lpszMenuName = NULL;
 	win.style = CS_HREDRAW | CS_VREDRAW;
 	RegisterClass(&win);
 	HWND hwnd=CreateWindow(
@@ -28,9 +37,9 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 	ShowWindow(hwnd, true);
 
 	MSG msg = { 0 };
-	while (GetMessage(&msg, hwnd, 0, 0)) {
+	while (GetMessage(&msg, 0, 0, 0)) {
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}
-	return (int)msg.wParam;
+	return 0;//(int)msg.wParam;
 }
