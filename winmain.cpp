@@ -1,45 +1,335 @@
-#include <Windows.h>
-LRESULT CALLBACK WndProc(HWND hwnd,UINT msg, WPARAM wp,LPARAM lp){
-	switch (msg) {
-	case WM_PAINT:
-	{
-		PAINTSTRUCT ps;
-		HDC hdc=BeginPaint(hwnd,&ps);
-		TextOut(hdc,200,100,L"ong",3);
-		EndPaint(hwnd,&ps);
+#include <windows.h>
+//#include <vector>
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+HINSTANCE g_hInst;
+LPCTSTR lpszClass = TEXT("First");
+
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance
+	, LPSTR lpszCmdParam, int nCmdShow)
+{
+	HWND hWnd;
+	MSG Message;
+	WNDCLASS WndClass;
+	g_hInst = hInstance;;
+	WndClass.cbClsExtra = 0;
+	WndClass.cbWndExtra = 0;
+	WndClass.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
+	WndClass.hCursor = LoadCursor(NULL, IDC_ARROW);
+	WndClass.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+	WndClass.hInstance = hInstance;
+	WndClass.lpfnWndProc = WndProc;
+	WndClass.lpszClassName = lpszClass;
+	WndClass.lpszMenuName = NULL;
+	WndClass.style = CS_HREDRAW | CS_VREDRAW;
+	RegisterClass(&WndClass);
+
+	hWnd = CreateWindow(lpszClass, lpszClass, WS_OVERLAPPEDWINDOW,
+		CW_USEDEFAULT, CW_USEDEFAULT, 800, 600,
+		NULL, (HMENU)NULL, hInstance, NULL);
+	ShowWindow(hWnd, nCmdShow);
+
+	while (GetMessage(&Message, NULL, 0, 0)) {
+		TranslateMessage(&Message);
+		DispatchMessage(&Message);
 	}
-		return 0;
-	case WM_SIZE:
-	{
-			
+	return (int)Message.wParam;
+}
+class CPen {
+	public:
+		HDC hdc;
+		HPEN hpen, oldpen;
+		CPen(HDC _hdc,int color,int width=1,int style= PS_SOLID) {
+			hdc = _hdc;
+			hpen=CreatePen(style, width,color);
+			oldpen = (HPEN)SelectObject(hdc, hpen);
+		}
+		~CPen() {
+			SelectObject(hdc, oldpen);
+			DeleteObject(hpen);
+		}
+};
+class CBrush
+{
+public:
+	HDC hdc;
+	HBRUSH hbrush, old;
+	CBrush(HDC _hdc,int color) {
+		hdc = _hdc;
+		hbrush = CreateSolidBrush(color);
+		old = (HBRUSH)SelectObject(hdc, hbrush);
 	}
-	return 0;
+	~CBrush() {
+		SelectObject(hdc, old);
+		DeleteObject(hbrush);
+	}
+
+};
+class CFont {
+public:
+	HDC hdc;
+	HFONT hfont, old;
+	CFont(HDC _hdc, LPCWSTR fontname) {
+		hdc = _hdc;
+		hfont=CreateFont(20, 0, 0, 0, FW_NORMAL, 0, 0, 0, ANSI_CHARSET, 0, 0, 0, 0, fontname);
+		old = (HFONT)SelectObject(hdc, hfont);
+	}
+	CFont(HDC _hdc, LOGFONT* lf) {
+		hdc = _hdc;
+		hfont = CreateFontIndirect(lf);
+		//CreateFont(20, 0, 0, 0, FW_NORMAL, 0, 0, 0, ANSI_CHARSET, 0, 0, 0, 0, fontname);
+		old = (HFONT)SelectObject(hdc, hfont);
+	}
+
+	~CFont() {
+		SelectObject(hdc, old);
+		DeleteObject(hfont);
+	}
+};
+struct CPoint {
+	USHORT x;
+	USHORT y;
+};
+enum {
+	BTN1=1,
+	BTN2=2,
+	MENU_COLOR,
+	BTN_EDIT,
+	RADIO1,
+	RADIO2,
+	RADIO3,
+	EDIT,
+	LISTBOX1,
+	COMBO1,
+	SCROLL1,
+	MENU_END=100,
+};
+LRESULT CALLBACK WndProc(HWND hwnd, UINT iMessage, WPARAM wParam, LPARAM lParam)
+{
+	static UCHAR style = PS_SOLID,point_len=0;
+	static bool draw=false,check=false;
+	static CPoint points[256];
+	static HWND hbutton[5],hedit,hlist,hcombo,hscroll;
+	static HMENU hmenu,hmenubar;
+	static LOGFONT logfont;
+	static DWORD color=0;
+	switch (iMessage) {
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return 0;
-	}
-	return DefWindowProc(hwnd, msg, wp, lp);
-}
-int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
-	WNDCLASS win = { 0 };
-	win.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
-	win.hInstance = hin;
-	win.hCursor = LoadCursor(NULL, IDC_ARROW);
-	win.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-	win.lpfnWndProc = WndProc;
-	win.lpszClassName = L"class";
-	win.style = CS_HREDRAW | CS_VREDRAW;
-	RegisterClass(&win);
-	HWND hwnd=CreateWindow(
-		L"class",L"title",WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT, CW_USEDEFAULT,800,600,0,0,hin,0
-	);
-	ShowWindow(hwnd, true);
+	case WM_CREATE:
+	{
+		auto hin = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
 
-	MSG msg = { 0 };
-	while (GetMessage(&msg, 0, 0, 0)) {
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		hedit= CreateWindow(L"edit", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER |
+			ES_AUTOHSCROLL, 300, 100, 200, 25, hwnd, (HMENU)EDIT, hin, NULL);
+		hbutton[0] = CreateWindow(
+			L"button", L"버튼1",
+			WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON, 100, 100, 200, 50, hwnd,
+			(HMENU)BTN1,
+			hin, 0);
+		hbutton[1] = CreateWindow(
+			L"button", L"버튼2",
+			WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX, 100, 200, 200, 50, hwnd,
+			(HMENU)BTN2,
+			hin, 0);
+
+		CreateWindow(L"button", L"ANG", WS_CHILD | WS_VISIBLE |
+			BS_GROUPBOX,
+			100, 0, 200, 150, hwnd, 0, hin, NULL);
+
+		hbutton[2]= CreateWindow(L"button", L"Black", WS_CHILD | WS_VISIBLE |
+			BS_AUTORADIOBUTTON | WS_GROUP,
+			150, 20, 100, 30, hwnd, (HMENU)RADIO1,hin, NULL);
+		hbutton[2] = CreateWindow(L"button", L"Red", WS_CHILD | WS_VISIBLE |
+			BS_AUTORADIOBUTTON,
+			150, 50, 100, 30, hwnd, (HMENU)RADIO2, hin, NULL);
+		hbutton[2] = CreateWindow(L"button", L"Blue", WS_CHILD | WS_VISIBLE |
+			BS_AUTORADIOBUTTON|WS_GROUP,
+			150, 80, 100, 30, hwnd, (HMENU)RADIO3, hin, NULL);
+
+		hbutton[2] = CreateWindow(L"button", L"ADD STRING", WS_CHILD | WS_VISIBLE |
+			BS_PUSHBUTTON,
+			350, 80, 100, 30, hwnd, (HMENU)BTN_EDIT, hin, NULL);
+		hlist= CreateWindow(L"listbox", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER |
+			LBS_NOTIFY, 500, 100, 100, 200, hwnd, (HMENU)LISTBOX1, hin, NULL);
+
+		hcombo= CreateWindow(L"combobox", NULL, WS_CHILD | WS_VISIBLE | CBS_DROPDOWN
+			, 400, 200, 100, 200, hwnd, (HMENU)COMBO1, hin, NULL);
+
+		hscroll = CreateWindow(L"scrollbar", NULL, WS_CHILD | WS_VISIBLE | SBS_HORZ
+			, 10, 500, 200, 20, hwnd, (HMENU)SCROLL1, hin, NULL);
+		SetScrollRange(hscroll,SB_CTL,0,255,true);
+		SetScrollPos(hscroll, SB_CTL, 0, true);
+
+
+
+		hmenu = CreateMenu();
+		hmenubar = CreateMenu();
+		AppendMenu(hmenu, MF_STRING, 1, L"뷁1");
+		AppendMenu(hmenu, MF_STRING, 2, L"폰트");
+		AppendMenu(hmenu, MF_STRING, MENU_COLOR, L"색상");
+
+		AppendMenu(hmenu, MF_STRING, MENU_END, L"프로그램 종료");
+
+		AppendMenu(hmenubar, MF_POPUP, (UINT_PTR)hmenu, L"뷁3");
+
+		SetMenu(hwnd, hmenubar);
 	}
-	return 0;//(int)msg.wParam;
+		return 0;
+	case WM_HSCROLL:
+		if ((HWND)lParam == hscroll);
+		return 0;
+	case WM_PAINT:
+	{
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hwnd, &ps);
+		CPen cpen(hdc, RGB(180, 50, 50), 1,style);
+		CBrush cbrush(hdc, color);
+		CFont cfont(hdc, &logfont);
+		
+		WCHAR buf[100] = L"";
+		MoveToEx(hdc, points[0].x, points[0].y, 0);
+		for (int i = 1;i < point_len;i++) {
+			wsprintf(buf, L"point[%d]=(%d, %d)", i, points[i].x, points[i].y);
+			TextOut(hdc, 0, i*(-logfont.lfHeight), buf, wcslen(buf));
+			LineTo(hdc, points[i].x, points[i].y);
+			
+		}
+		if(check)Ellipse(hdc, 10, 10, 300, 300);
+		
+		EndPaint(hwnd, &ps);
+	}
+	return 0;
+	case WM_COMMAND:
+	{
+		switch (LOWORD(wParam)) {
+		case EDIT:
+			switch (HIWORD(wParam)) {
+			case EN_CHANGE:
+				/*WCHAR buf[128];
+				GetWindowText(hedit,buf,128);
+				SetWindowText(hwnd, buf);*/
+				break;
+			}
+			break;
+		case COMBO1: {
+			WCHAR buf[128];
+			switch (HIWORD(wParam)) {
+
+			case CBN_SELCHANGE: {
+
+				int i = SendMessage(hcombo, CB_GETCURSEL, 0, 0);
+				//GetWindowText(hedit, buf, 128);
+				SendMessage(hcombo, CB_GETLBTEXT, i, (LPARAM)buf);
+				SetWindowText(hwnd, buf);
+			}break;
+			case CBN_EDITCHANGE:
+				GetWindowText(hcombo, buf, 128);
+				SetWindowText(hwnd, buf);
+				break;
+			}
+			break;
+		}
+		case LISTBOX1:
+
+			switch (HIWORD(wParam)) {
+			case LBN_SETFOCUS:
+				break;
+			}
+			break;
+		case BTN_EDIT:
+			WCHAR buf[128];
+			GetWindowText(hedit, buf, 128);
+			//SetWindowText(hwnd, buf);
+			SendMessage(hlist, LB_ADDSTRING, 0, (LPARAM)buf);
+			SendMessage(hcombo, CB_ADDSTRING, 0, (LPARAM)buf);
+			break;
+		case BTN1:
+			if (SendMessage(hbutton[1], BM_GETCHECK, 0, 0) == BST_UNCHECKED) {
+				SendMessage(hbutton[1], BM_SETCHECK, BST_CHECKED, 0);
+				check = true;
+			}
+			else {
+				SendMessage(hbutton[1], BM_SETCHECK, BST_UNCHECKED, 0);
+				check = false;
+			}
+			InvalidateRect(hwnd, 0, true);
+			break;
+		case BTN2:
+		{
+			CHOOSEFONT cft = { 0 };
+			cft.lStructSize = sizeof(CHOOSEFONT);
+			cft.hwndOwner = hwnd;
+			cft.lpLogFont = &logfont;
+			cft.Flags = CF_EFFECTS | CF_SCREENFONTS;
+			if(ChooseFont(&cft)){
+				InvalidateRect(hwnd, 0, true);
+			}
+
+		}
+		break;
+		case MENU_COLOR:
+		{
+			CHOOSECOLOR col = { 0 };
+			COLORREF coltemp[16];
+			col.lStructSize = sizeof(CHOOSECOLOR);
+			col.hwndOwner = hwnd;;
+			col.lpCustColors = coltemp;
+			if (ChooseColor(&col) != 0) {
+				color = col.rgbResult;
+				InvalidateRect(hwnd, 0, true);
+			}
+		}
+			break;
+		case MENU_END:
+		{
+
+			if(MessageBox(hwnd,L"끌거?",L"ㅇㄴ",MB_ICONQUESTION|MB_YESNO)==IDYES)
+				SendMessage(hwnd, WM_DESTROY, 0, 0);
+		}break;
+		}
+	}
+		return 0;
+	case WM_RBUTTONUP:
+	{
+		;HIWORD(lParam);
+		HMENU hpop=CreatePopupMenu();
+		POINT point = { LOWORD(lParam) ,HIWORD(lParam) };
+
+		ClientToScreen(hwnd, &point);
+		AppendMenu(hpop, MF_STRING, BTN2, L"폰트");
+		AppendMenu(hpop, MF_STRING, MENU_COLOR, L"색상");
+		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
+		AppendMenu(hpop, MF_STRING, MENU_END, L"QUIT");
+		TrackPopupMenu(hpop, TPM_RIGHTBUTTON, point.x, point.y,
+			0, hwnd, 0);
+		DestroyMenu(hpop);
+	}
+		break;
+	case WM_LBUTTONDOWN:
+	{
+		//HDC hdc = GetDC(hwnd);
+		draw = true;
+		//point_len = 0;
+		points[point_len++] = { LOWORD(lParam) ,HIWORD(lParam) };
+		//MoveWindow(hedit, LOWORD(lParam), HIWORD(lParam), 200, 50, true);
+		//ReleaseDC(hwnd, hdc);
+	}break;
+	case WM_MOUSEMOVE:
+	{
+		if (draw) {
+			HDC hdc = GetDC(hwnd);
+			points[point_len++] = { LOWORD(lParam) ,HIWORD(lParam) };
+			ReleaseDC(hwnd, hdc);
+			InvalidateRect(hwnd, nullptr, true);
+		}
+	}break;
+	case WM_LBUTTONUP:
+		draw = false;
+		break;
+	}
+	return(DefWindowProc(hwnd, iMessage, wParam, lParam));
 }
+/*
+* menu ; https://zetcode.com/gui/winapi/menus/
+*/
