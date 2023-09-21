@@ -1,8 +1,12 @@
+
 #include <windows.h>
+#include <commctrl.h>
+#pragma comment(lib,"comctl32.lib")
 //#include <vector>
+LRESULT CALLBACK MainWinProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 HINSTANCE g_hInst;
-LPCTSTR lpszClass = TEXT("First");
+LPCTSTR lpszClass = TEXT("APIDRAW");
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance
 	, LPSTR lpszCmdParam, int nCmdShow)
@@ -17,7 +21,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance
 	WndClass.hCursor = LoadCursor(NULL, IDC_ARROW);
 	WndClass.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 	WndClass.hInstance = hInstance;
-	WndClass.lpfnWndProc = WndProc;
+	WndClass.lpfnWndProc = MainWinProc;
 	WndClass.lpszClassName = lpszClass;
 	WndClass.lpszMenuName = NULL;
 	WndClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -89,6 +93,187 @@ struct CPoint {
 	USHORT x;
 	USHORT y;
 };
+
+class CScroll{
+public:
+	WORD pos;
+	HWND hscroll;
+	WORD pos_max,inc;
+	void Create(HWND hwnd,HINSTANCE g_hin,UINT id,int x,int y,WORD _max=255,int width=200){
+	hscroll=CreateWindow(L"scrollbar",0,WS_CHILD|WS_VISIBLE|
+		SBS_HORZ,x,y,width,20,hwnd,(HMENU)id,g_hin,0);
+	SetScrollRange(hscroll,SB_CTL,0,_max,true);
+	pos_max=_max;
+	inc=max(1,pos_max/10);
+	SetScrollPos(hscroll,SB_CTL,0,true);
+	}
+	void Process(WPARAM wp,LPARAM lp){
+		WORD msgtype=LOWORD(wp),
+			temp=HIWORD(wp);
+		switch(msgtype){
+		case SB_LINELEFT:pos=max(0,pos-1);break;
+		case SB_LINERIGHT:pos=min(pos_max,pos+1);break;
+		case SB_PAGELEFT:pos=max(0,pos-inc);break;
+		case SB_PAGERIGHT:pos=min(pos_max,pos+inc);break;
+		case SB_THUMBTRACK:pos=temp;break;
+		}
+		SetScrollPos((HWND)lp,SB_CTL,pos,true);
+	}
+};
+
+class CWindow{
+public:
+	HINSTANCE g_hin;
+	CScroll scroll,scroll1,scroll2;
+	int color;
+	
+	
+	CWindow(){color=RGB(255,255,255);}
+	virtual void Create(HWND hwnd);
+	virtual void Paint(HWND hwnd);
+	virtual void Command(HWND hwnd,WPARAM wp,LPARAM lp);
+	virtual void Hscroll(HWND hwnd,WPARAM wp,LPARAM lp);
+	virtual void Lbtndown(HWND hwnd,WPARAM wp,LPARAM lp){
+		
+	}
+};
+enum{
+	ID_MENU1=1,
+	ID_MENU2=2,
+	ID_MENU3,
+	ID_SCROLL,
+	ID_SCROLL1,
+	ID_SCROLL2,
+	ID_EDIT1,
+	ID_TOOLBAR,
+	ID_BTN1,
+	//ID_BTN2,
+};
+void CWindow::Create(HWND hwnd){
+	
+	g_hin=(HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
+	HWND edit= CreateWindow(L"edit", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER |
+			ES_AUTOHSCROLL, 100, 100, 200, 25, hwnd, (HMENU)ID_EDIT1, g_hin, NULL);
+	HWND btn1= CreateWindow(L"button", L"파일 열기", WS_CHILD | 
+		WS_VISIBLE |BS_PUSHBUTTON, 
+		250, 50, 100, 50, hwnd, (HMENU)ID_BTN1, g_hin, NULL);
+	HWND btn2= CreateWindow(L"button", L"색상 변경", WS_CHILD | 
+		WS_VISIBLE |BS_PUSHBUTTON, 
+		250, 00, 100, 50, hwnd, (HMENU)ID_MENU3, g_hin, NULL);
+	
+	HMENU menu=CreateMenu(),mainmenu=CreateMenu();
+	AppendMenu(menu,MF_STRING,ID_MENU1,L"I Love API 하악하악 너무좋아");
+	AppendMenu(menu,MF_STRING,ID_MENU3,L"색상");
+	AppendMenu(menu,MF_SEPARATOR,0,0);
+	AppendMenu(menu,MF_STRING,ID_MENU2,L"닫아 시발");
+	AppendMenu(mainmenu,MF_POPUP,(UINT_PTR)menu,L"쓸데없는거");
+	SetMenu(hwnd,mainmenu);
+
+	scroll.Create(hwnd,g_hin,ID_SCROLL,0,0);
+	scroll1.Create(hwnd,g_hin,ID_SCROLL1,0,20,10);
+	scroll2.Create(hwnd,g_hin,ID_SCROLL2,0,40);
+}
+
+void CWindow::Paint(HWND hwnd){
+	PAINTSTRUCT ps;
+	HDC hdc=BeginPaint(hwnd,&ps);
+	CBrush brush(hdc,color);
+	CPen pen(hdc,0,scroll1.pos);
+	Ellipse(hdc,0,0,scroll.pos,scroll.pos);
+	EndPaint(hwnd,&ps);
+}
+void CWindow::Hscroll(HWND hwnd,WPARAM wp,LPARAM lp){
+	if((HWND)lp==scroll.hscroll)scroll.Process(wp,lp);
+	else if((HWND)lp==scroll1.hscroll)scroll1.Process(wp,lp);
+	else if((HWND)lp==scroll2.hscroll)scroll2.Process(wp,lp);
+	else goto END;
+	//scroll1.Process(wp,lp);
+	RECT rt={0,0,300,300};
+	InvalidateRect(hwnd,&rt,true);
+END:;
+}
+void CWindow::Command(HWND hwnd,WPARAM wp,LPARAM lp){
+	switch(LOWORD(wp)){
+	case ID_BTN1:{
+		OPENFILENAME ofn={0};
+		WCHAR filename[MAX_PATH]=L"";
+		ofn.lStructSize=sizeof(OPENFILENAME);
+		ofn.hwndOwner=hwnd;
+		ofn.lpstrFilter=L"모든 파일(*.*)\0*.*\0텍스트 파일\0*.txt;*.doc\0";
+		ofn.nMaxFile=256;
+		ofn.lpstrFile=filename;
+		ofn.lpstrInitialDir=L"c:\\";
+		if(GetOpenFileName(&ofn)!=0){
+			MessageBox(hwnd,filename,L"열렸나?",MB_OK);
+		}
+		}
+		break;
+	case ID_MENU1:
+		MessageBox(hwnd,L"아 뭐야",L"짜증나",MB_OK);
+		break;
+	case ID_MENU3:
+		{
+			CHOOSECOLOR col={0};
+			COLORREF temp[16];
+			col.lStructSize=sizeof(CHOOSECOLOR);
+			col.hwndOwner=hwnd;
+			col.lpCustColors=temp;
+			if(ChooseColor(&col)!=0){
+				color=col.rgbResult;
+				InvalidateRect(hwnd,0,true);
+			}
+		}
+		break;
+	case ID_MENU2:
+		SendMessage(hwnd,WM_DESTROY,0,0);
+		break;
+	}
+}
+LRESULT CALLBACK MainWinProc(HWND hwnd, UINT iMessage, WPARAM wParam, LPARAM lParam)
+{
+	
+	static CWindow window;
+	switch (iMessage) {
+	case WM_CREATE:	
+	{/*InitCommonControls();
+	TBBUTTON ToolBtn[1]={{
+		STD_FILENEW,10,
+			TBSTATE_ENABLED,TBSTYLE_BUTTON,
+		0,0,0,0
+	}};
+	HWND hTool=CreateToolbarEx(hwnd,WS_CHILD|WS_VISIBLE|WS_BORDER,
+		ID_TOOLBAR,1,HINST_COMMCTRL,
+		IDB_STD_SMALL_COLOR,ToolBtn,20,
+		16,16,16,16,sizeof(TBBUTTON));
+	*/
+	window.Create(hwnd);}break;
+	case WM_PAINT:	window.Paint(hwnd);break;
+	case WM_COMMAND:window.Command(hwnd,wParam,lParam);break;
+	case WM_HSCROLL:window.Hscroll(hwnd,wParam,lParam);break;
+	case WM_LBUTTONDOWN:window.Lbtndown(hwnd,wParam,lParam);break;
+	case WM_RBUTTONUP:
+		{
+			HMENU hpop=CreatePopupMenu();
+		POINT point = { LOWORD(lParam) ,HIWORD(lParam) };
+
+		ClientToScreen(hwnd, &point);
+		AppendMenu(hpop, MF_STRING, 0, L"폰트");
+		AppendMenu(hpop, MF_STRING, ID_MENU3, L"색상");
+		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
+		AppendMenu(hpop, MF_STRING, ID_MENU2, L"QUIT");
+		TrackPopupMenu(hpop, TPM_RIGHTBUTTON, point.x, point.y,
+			0, hwnd, 0);
+		DestroyMenu(hpop);
+		}
+		break;
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		return 0;
+	}
+	return DefWindowProc(hwnd,iMessage,wParam,lParam);
+}
+
+#ifdef PROC1
 enum {
 	BTN1=1,
 	BTN2=2,
@@ -105,9 +290,10 @@ enum {
 };
 LRESULT CALLBACK WndProc(HWND hwnd, UINT iMessage, WPARAM wParam, LPARAM lParam)
 {
-	static UCHAR style = PS_SOLID,point_len=0;
+	static UCHAR style = PS_SOLID;
+	static USHORT point_len=0;
 	static bool draw=false,check=false;
-	static CPoint points[256];
+	static CPoint points[256*256];
 	static HWND hbutton[5],hedit,hlist,hcombo,hscroll;
 	static HMENU hmenu,hmenubar;
 	static LOGFONT logfont;
@@ -311,7 +497,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMessage, WPARAM wParam, LPARAM lParam)
 		//HDC hdc = GetDC(hwnd);
 		draw = true;
 		//point_len = 0;
-		points[point_len++] = { LOWORD(lParam) ,HIWORD(lParam) };
+		points[point_len].y=HIWORD(lParam);
+		points[point_len++].x=LOWORD(lParam);
+		
 		//MoveWindow(hedit, LOWORD(lParam), HIWORD(lParam), 200, 50, true);
 		//ReleaseDC(hwnd, hdc);
 	}break;
@@ -319,7 +507,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMessage, WPARAM wParam, LPARAM lParam)
 	{
 		if (draw) {
 			HDC hdc = GetDC(hwnd);
-			points[point_len++] = { LOWORD(lParam) ,HIWORD(lParam) };
+			points[point_len].y=HIWORD(lParam);
+			points[point_len++].x=LOWORD(lParam);
 			ReleaseDC(hwnd, hdc);
 			InvalidateRect(hwnd, nullptr, true);
 		}
@@ -330,6 +519,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMessage, WPARAM wParam, LPARAM lParam)
 	}
 	return(DefWindowProc(hwnd, iMessage, wParam, lParam));
 }
+#endif
 /*
 * menu ; https://zetcode.com/gui/winapi/menus/
 */
