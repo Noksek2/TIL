@@ -1,7 +1,5 @@
 
-#include <windows.h>
-#include <commctrl.h>
-#pragma comment(lib,"comctl32.lib")
+#include "apiclass.h"
 //#include <vector>
 LRESULT CALLBACK MainWinProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -38,105 +36,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance
 	}
 	return (int)Message.wParam;
 }
-class CPen {
-	public:
-		HDC hdc;
-		HPEN hpen, oldpen;
-		CPen(HDC _hdc,int color,int width=1,int style= PS_SOLID) {
-			hdc = _hdc;
-			hpen=CreatePen(style, width,color);
-			oldpen = (HPEN)SelectObject(hdc, hpen);
-		}
-		~CPen() {
-			SelectObject(hdc, oldpen);
-			DeleteObject(hpen);
-		}
-};
-class CBrush
-{
-public:
-	HDC hdc;
-	HBRUSH hbrush, old;
-	CBrush(HDC _hdc,int color) {
-		hdc = _hdc;
-		hbrush = CreateSolidBrush(color);
-		old = (HBRUSH)SelectObject(hdc, hbrush);
-	}
-	~CBrush() {
-		SelectObject(hdc, old);
-		DeleteObject(hbrush);
-	}
 
-};
-class CFont {
-public:
-	HDC hdc;
-	HFONT hfont, old;
-	CFont(HDC _hdc, LPCWSTR fontname) {
-		hdc = _hdc;
-		hfont=CreateFont(20, 0, 0, 0, FW_NORMAL, 0, 0, 0, ANSI_CHARSET, 0, 0, 0, 0, fontname);
-		old = (HFONT)SelectObject(hdc, hfont);
-	}
-	CFont(HDC _hdc, LOGFONT* lf) {
-		hdc = _hdc;
-		hfont = CreateFontIndirect(lf);
-		//CreateFont(20, 0, 0, 0, FW_NORMAL, 0, 0, 0, ANSI_CHARSET, 0, 0, 0, 0, fontname);
-		old = (HFONT)SelectObject(hdc, hfont);
-	}
-
-	~CFont() {
-		SelectObject(hdc, old);
-		DeleteObject(hfont);
-	}
-};
-struct CPoint {
-	USHORT x;
-	USHORT y;
-};
-
-class CScroll{
-public:
-	WORD pos;
-	HWND hscroll;
-	WORD pos_max,inc;
-	void Create(HWND hwnd,HINSTANCE g_hin,UINT id,int x,int y,WORD _max=255,int width=200){
-	hscroll=CreateWindow(L"scrollbar",0,WS_CHILD|WS_VISIBLE|
-		SBS_HORZ,x,y,width,20,hwnd,(HMENU)id,g_hin,0);
-	SetScrollRange(hscroll,SB_CTL,0,_max,true);
-	pos_max=_max;
-	inc=max(1,pos_max/10);
-	SetScrollPos(hscroll,SB_CTL,0,true);
-	}
-	void Process(WPARAM wp,LPARAM lp){
-		WORD msgtype=LOWORD(wp),
-			temp=HIWORD(wp);
-		switch(msgtype){
-		case SB_LINELEFT:pos=max(0,pos-1);break;
-		case SB_LINERIGHT:pos=min(pos_max,pos+1);break;
-		case SB_PAGELEFT:pos=max(0,pos-inc);break;
-		case SB_PAGERIGHT:pos=min(pos_max,pos+inc);break;
-		case SB_THUMBTRACK:pos=temp;break;
-		}
-		SetScrollPos((HWND)lp,SB_CTL,pos,true);
-	}
-};
-
-class CWindow{
-public:
-	HINSTANCE g_hin;
-	CScroll scroll,scroll1,scroll2;
-	int color;
-	
-	
-	CWindow(){color=RGB(255,255,255);}
-	virtual void Create(HWND hwnd);
-	virtual void Paint(HWND hwnd);
-	virtual void Command(HWND hwnd,WPARAM wp,LPARAM lp);
-	virtual void Hscroll(HWND hwnd,WPARAM wp,LPARAM lp);
-	virtual void Lbtndown(HWND hwnd,WPARAM wp,LPARAM lp){
-		
-	}
-};
 enum{
 	ID_MENU1=1,
 	ID_MENU2=2,
@@ -147,11 +47,21 @@ enum{
 	ID_EDIT1,
 	ID_TOOLBAR,
 	ID_BTN1,
+	ID_OWNBTN,
+	ID_FONT,
 	//ID_BTN2,
 };
 void CWindow::Create(HWND hwnd){
-	
+	lf.lfHeight=20;
+	lf.lfFaceName[0]=L'굴';
+	lf.lfFaceName[1]=L'림';
+	//wcscpy(lf.lfFaceName,L"굴림");
+	//lf.lfFaceName[1]=L'림';
 	g_hin=(HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
+	HWND mybtn=CreateWindow(L"button",L"",
+		WS_CHILD|WS_VISIBLE|BS_OWNERDRAW,
+		100,150,100,100,hwnd,(HMENU)ID_OWNBTN,g_hin,0);
+	
 	HWND edit= CreateWindow(L"edit", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER |
 			ES_AUTOHSCROLL, 100, 100, 200, 25, hwnd, (HMENU)ID_EDIT1, g_hin, NULL);
 	HWND btn1= CreateWindow(L"button", L"파일 열기", WS_CHILD | 
@@ -160,6 +70,10 @@ void CWindow::Create(HWND hwnd){
 	HWND btn2= CreateWindow(L"button", L"색상 변경", WS_CHILD | 
 		WS_VISIBLE |BS_PUSHBUTTON, 
 		250, 00, 100, 50, hwnd, (HMENU)ID_MENU3, g_hin, NULL);
+	
+	CreateWindow(L"button", L"폰트 변경", WS_CHILD | 
+		WS_VISIBLE |BS_PUSHBUTTON, 
+		400, 00, 100, 50, hwnd, (HMENU)ID_FONT, g_hin, NULL);
 	
 	HMENU menu=CreateMenu(),mainmenu=CreateMenu();
 	AppendMenu(menu,MF_STRING,ID_MENU1,L"I Love API 하악하악 너무좋아");
@@ -177,23 +91,51 @@ void CWindow::Create(HWND hwnd){
 void CWindow::Paint(HWND hwnd){
 	PAINTSTRUCT ps;
 	HDC hdc=BeginPaint(hwnd,&ps);
+		//SetMapMode(hdc,MM_LOENGLISH);
+		//SetViewportOrgEx(hdc,200,150,NULL);
 	CBrush brush(hdc,color);
 	CPen pen(hdc,0,scroll1.pos);
-	Ellipse(hdc,0,0,scroll.pos,scroll.pos);
+	Ellipse(hdc,0+scroll2.pos,0,scroll.pos+scroll2.pos,scroll.pos);
+	CFont font(hdc,&lf);
+	SetTextColor(hdc,fontcol);
+	SetBkMode(hdc,TRANSPARENT);
+	TextOut(hdc,50,200,L"그걸 자랑이라고 말한다",12);
+	
+	RECT rect;
+	GetClientRect(hwnd,&rect);
+	DrawText(hdc,L"I love youI love youI love youI lo"
+		L"ve youI love youI love youI love youI love"
+		L"youI love youI love youI love youI love yo"
+		L"uI love youI love youI love youI love youI love youI love"
+		L"youI love youI love youI love youI love youI love youI lov"
+		L"e youI love youI love you",-1,
+		&rect,DT_BOTTOM|DT_WORDBREAK);
 	EndPaint(hwnd,&ps);
 }
 void CWindow::Hscroll(HWND hwnd,WPARAM wp,LPARAM lp){
 	if((HWND)lp==scroll.hscroll)scroll.Process(wp,lp);
 	else if((HWND)lp==scroll1.hscroll)scroll1.Process(wp,lp);
 	else if((HWND)lp==scroll2.hscroll)scroll2.Process(wp,lp);
-	else goto END;
+	else return ;
 	//scroll1.Process(wp,lp);
-	RECT rt={0,0,300,300};
+	RECT rt={0,0,800,300};
 	InvalidateRect(hwnd,&rt,true);
-END:;
 }
 void CWindow::Command(HWND hwnd,WPARAM wp,LPARAM lp){
 	switch(LOWORD(wp)){
+	case ID_FONT:
+		{
+			CHOOSEFONT fnt={0};
+			fnt.lStructSize=sizeof(CHOOSEFONT);
+			fnt.hwndOwner=hwnd;
+			fnt.lpLogFont=&lf;
+			fnt.Flags=CF_EFFECTS|CF_SCREENFONTS;
+			if(ChooseFont(&fnt)){
+				fontcol=fnt.rgbColors;
+				InvalidateRect(hwnd,0,true);
+			}
+		}
+		break;
 	case ID_BTN1:{
 		OPENFILENAME ofn={0};
 		WCHAR filename[MAX_PATH]=L"";
@@ -234,6 +176,19 @@ LRESULT CALLBACK MainWinProc(HWND hwnd, UINT iMessage, WPARAM wParam, LPARAM lPa
 	
 	static CWindow window;
 	switch (iMessage) {
+	case WM_CTLCOLORBTN:
+		SetTextColor((HDC)wParam,RGB(100,100,255));
+		SetBkColor((HDC)wParam,RGB(100,255,100));
+		return (LRESULT)CreateSolidBrush(RGB(0,0,30));
+	case WM_DRAWITEM:
+	{
+		LPDRAWITEMSTRUCT lpdraw=(LPDRAWITEMSTRUCT)lParam;
+		if(lpdraw->itemState&ODS_SELECTED){
+			TextOut(lpdraw->hDC,2,30,L"헤으윽 오니짱",7);
+		}
+		else TextOut(lpdraw->hDC,2,2,L"뷁",1);
+	}
+		break;
 	case WM_CREATE:	
 	{/*InitCommonControls();
 	TBBUTTON ToolBtn[1]={{
@@ -251,13 +206,16 @@ LRESULT CALLBACK MainWinProc(HWND hwnd, UINT iMessage, WPARAM wParam, LPARAM lPa
 	case WM_COMMAND:window.Command(hwnd,wParam,lParam);break;
 	case WM_HSCROLL:window.Hscroll(hwnd,wParam,lParam);break;
 	case WM_LBUTTONDOWN:window.Lbtndown(hwnd,wParam,lParam);break;
+	case WM_MOUSEWHEEL:
+		window.Mousewheel(hwnd,wParam,lParam);
+		break;
 	case WM_RBUTTONUP:
 		{
 			HMENU hpop=CreatePopupMenu();
 		POINT point = { LOWORD(lParam) ,HIWORD(lParam) };
 
 		ClientToScreen(hwnd, &point);
-		AppendMenu(hpop, MF_STRING, 0, L"폰트");
+		AppendMenu(hpop, MF_STRING, ID_FONT, L"폰트");
 		AppendMenu(hpop, MF_STRING, ID_MENU3, L"색상");
 		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
 		AppendMenu(hpop, MF_STRING, ID_MENU2, L"QUIT");
