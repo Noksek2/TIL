@@ -1,14 +1,17 @@
 #include <Windows.h>
 #include <gdiplus.h>
 #include <commctrl.h>
+#ifdef RESOURCE
 #include "resource.h"
+#endif
+
+//#define DIALOG
+#ifdef DIALOG
 using namespace Gdiplus;
 #pragma comment(lib,"gdiplus")
 #pragma comment(lib,"comctl32.lib")
 HWND hRed, hGreen, hBlue;
 HINSTANCE g_hin;
-//#define DIALOG
-#ifdef DIALOG
 bool CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	switch (msg) {
 	case WM_INITDIALOG:
@@ -43,7 +46,7 @@ LRESULT DisplayMessage(HINSTANCE hin, HWND hwnd) {
 	plate->y = 10;
 	plate->cx = 200;
 	plate->cy = 100;
-	
+
 
 	pw = (LPWORD)(plate + 1);
 	*pw++ = 0;
@@ -76,40 +79,40 @@ LRESULT DisplayMessage(HINSTANCE hin, HWND hwnd) {
 }
 #endif
 
-HINSTANCE g_hInst;
-inline int LP_GetMouseX(LPARAM lp){ return LOWORD(lp); }
+
+inline int LP_GetMouseX(LPARAM lp) { return LOWORD(lp); }
 inline int LP_GetMouseY(LPARAM lp) { return HIWORD(lp); }
-struct ShapeList{
+struct ShapeList {
 	struct ShapeData {
 		RECT rt;
 		USHORT type;
 	};
-	ShapeData *data;
-	UINT capa,len;
+	ShapeData* data;
+	UINT capa, len;
 	ShapeList() {
 		capa = 10; len = 0;
-		data = (ShapeData*)malloc(sizeof(ShapeData)*capa);
+		data = (ShapeData*)malloc(sizeof(ShapeData) * capa);
 	}
-	void append(USHORT type,RECT *mrt) {
+	void append(USHORT type, RECT* mrt) {
 		if (len >= capa)return;
 		data[len].type = type;
 		memcpy(&data[len++].rt, mrt, sizeof(RECT));
 	}
 	void delete_shape(ShapeData* d) {
-		if (len>0&&d<data+len)
-			*d= data[--len];
+		if (len > 0 && d < data + len)
+			*d = data[--len];
 	}
 	void clear() {
 		len = 0;
 	}
-	bool AdjustPointInRect(RECT *r,POINT pt) {
+	bool AdjustPointInRect(RECT* r, POINT pt) {
 		RECT rr;
 		long t;
 		if (r->left > r->right) {
 			rr.left = r->right;
 			rr.right = r->left;
 		}
-		else{
+		else {
 			rr.left = r->left;
 			rr.right = r->right;
 		}
@@ -117,16 +120,16 @@ struct ShapeList{
 			rr.top = r->bottom;
 			rr.bottom = r->top;
 		}
-		else{
+		else {
 			rr.top = r->top;
 			rr.bottom = r->bottom;
 		}
 		if (PtInRect(&rr, pt))return true;
 		return false;
 	}
-	ShapeData* find(USHORT x,USHORT y) {
-		POINT pt = {x,y};
-		for (auto d = data+(len-1); d>=data; d--) {
+	ShapeData* find(USHORT x, USHORT y) {
+		POINT pt = { x,y };
+		for (auto d = data + len - 1; d >= data; d--) {
 			{
 				if (AdjustPointInRect(&d->rt, pt)) return d;
 			}
@@ -140,48 +143,68 @@ struct ShapeList{
 	}
 };
 class APIClass {
-public:
-	ShapeList* shapelist;
-	HWND api_hwnd;
+private:
 	USHORT mx, my, oldx, oldy;
-	ShapeList::ShapeData* shapenum;
-	bool isDrag;
-	enum { DrawType_None,DrawType_Circle, DrawType_Square, DrawType_Line,
-		Menu_Delete,Menu_Clear,Menu_Exit };
-	USHORT drawtype;
-	APIClass() {
-		shapenum = 0;
-		shapelist = new ShapeList();
-		isDrag = false;
-		drawtype = DrawType_None;
-	}
-	void Create(HWND hwnd) { api_hwnd = hwnd; }
-	void Paint(HWND hwnd);
-	void Command(USHORT,WPARAM);
-	void MouseMove(USHORT, USHORT);
-	void LButtonDown(USHORT,USHORT);
-	void LButtonUp() { 
-		if (isDrag) {
-			isDrag = false; //ReleaseCapture();
-			RECT rt;
-			if (mx == oldx && my == oldy)return;
-			SetRect(&rt, mx, my, oldx, oldy);
-			shapelist->append(drawtype, &rt);
-			shapenum = shapelist->data+(shapelist->len - 1);
-			InvalidateRect(api_hwnd, 0, true);
-		}
-	}
-	void RButtonUp(USHORT, USHORT);
-	void Destroy(){ PostQuitMessage(0); }
-	~APIClass() { delete shapelist; }
-
-	inline void DrawOneTrack(HDC hdc,USHORT x, USHORT y){
+	inline void DrawOneTrack(HDC hdc, USHORT x, USHORT y) {
 		Rectangle(hdc, x - 5, y - 5, x + 5, y + 5);
 	}
+	void GetTracker(UCHAR tracknum, RECT* rt) {
+		RECT* srt = &shapenum->rt;
+		int x, y;
+		switch (tracknum) {
+		case 1:x = srt->left;y = srt->top; break;
+		case 2:x = (srt->left+ srt->right)/2;y = srt->top; break;
+		case 3:x = srt->right;y = srt->top; break;
+		case 4:x = srt->left;y = (srt->top+ srt->bottom)/2; break;
+		case 5:x = srt->right;y = (srt->top + srt->bottom) / 2; break;
+		case 6:x = srt->left;y = srt->bottom; break;
+		case 7:x = (srt->left + srt->right) / 2;y = srt->bottom; break;
+		case 8:
+			x = srt->right;y = srt->bottom;
+			break;
+		}
+		SetRect(rt, x - 5, y - 5, x + 5, y + 5);
+	}
+	int TrackerHit(USHORT x, USHORT y) {
+		POINT pt;
+		pt.x = x;
+		pt.y = y;
+		if (!shapenum)return 0;
+		RECT trackrt;
+		for (int i = 1;i <= 8;i++) {
+			GetTracker(i, &trackrt);
+			if (PtInRect(&trackrt, pt))return i;
+		}
+		return 0;
+	}
+	void DrawTemp() {
+		HDC hdc = GetDC(api_hwnd);
+		SetROP2(hdc, R2_XORPEN);
+		HPEN hpen = CreatePen(PS_DOT, 1, RGB(0, 0, 0));
+		HPEN oldpen = (HPEN)SelectObject(hdc, hpen);
+
+		HBRUSH oldbrush = (HBRUSH)SelectObject(hdc, GetStockObject(NULL_BRUSH));
+
+		RECT* rt = &shapenum->rt;
+		switch (shapenum->type) {
+		case DrawType_Line:
+
+			MoveToEx(hdc, rt->left, rt->top, 0);
+			LineTo(hdc, rt->right, rt->bottom);
+			break;
+		case DrawType_Circle:
+			Ellipse(hdc, rt->left, rt->top, rt->right, rt->bottom);
+			break;
+		case DrawType_Square:
+			Rectangle(hdc, rt->left, rt->top, rt->right, rt->bottom);
+			break;
+		}
+		DeleteObject(SelectObject(hdc, oldpen));
+		SelectObject(hdc, oldbrush);
+		ReleaseDC(api_hwnd, hdc);
+	}
 	void DrawTracker(HDC hdc) {
-		RECT rt= shapenum->rt;
-		
-		
+		RECT rt = shapenum->rt;
 		if (shapenum->type != DrawType_Line) {
 			DrawOneTrack(hdc, rt.left, rt.top);
 			DrawOneTrack(hdc, (rt.left + rt.right) / 2, rt.top);
@@ -199,12 +222,79 @@ public:
 			DrawOneTrack(hdc, rt.right, rt.bottom);
 		}
 	}
+	WCHAR* TrackCursor[10] = { 0,
+		IDC_SIZENWSE,IDC_SIZENS,IDC_SIZENESW,IDC_SIZEWE,
+		IDC_SIZEWE,IDC_SIZENESW,IDC_SIZENS,IDC_SIZENWSE };
+public:
+	ShapeList* shapelist;
+	HWND api_hwnd;
+	
+	ShapeList::ShapeData* shapenum;
+	USHORT isDrag;
+	enum {
+		DrawType_None, DrawType_Circle, DrawType_Square, DrawType_Line,
+		Menu_Delete, Menu_Clear, Menu_Exit
+	};
+	enum {
+		Drag_None=0,Drag_Draw=1,Drag_Move,Drag_Size
+	};
+	USHORT drawtype;
+	APIClass() {
+		shapenum = 0;
+		shapelist = new ShapeList();
+		isDrag = 0;
+		drawtype = DrawType_None;
+	}
+	void Create(HWND hwnd) {
+		api_hwnd = hwnd;
+	}
+	void Paint(HWND hwnd);
+	void Command(USHORT, WPARAM);
+	void MouseMove(USHORT, USHORT);
+	void LButtonDown(USHORT, USHORT);
+	bool OnSetCursor() {
+		POINT pt;
+		int hit;
+		
+		if (drawtype == DrawType_None&&shapenum) {
+			GetCursorPos(&pt);
+			ScreenToClient(api_hwnd, &pt);
+			hit=TrackerHit(pt.x, pt.y);
+			if (hit) {
+				SetWindowText(api_hwnd, L"선택");
+				SetCursor(LoadCursor(0, TrackCursor[hit]));
+				return true;
+			}
+		}
+		return false;
+	}
+	void LButtonUp() {
+		if (isDrag==1) {
+			RECT rt;isDrag = 0;
+			if (mx == oldx && my == oldy)return;
+			SetRect(&rt, mx, my, oldx, oldy);
+			shapelist->append(drawtype, &rt);
+			shapenum = shapelist->data + (shapelist->len - 1);
+			InvalidateRect(api_hwnd, 0, true);
+		}
+		else if (isDrag == 2) {
+			//SetRect(&shapenum->rt,mx, my;
+			InvalidateRect(api_hwnd, 0, true);
+		}
+		isDrag = 0;
+	}
+	void RButtonUp(USHORT, USHORT);
+	void Destroy() { PostQuitMessage(0); }
+	~APIClass() { delete shapelist; }
+
+	
 };
-void APIClass::LButtonDown(USHORT x, USHORT y){
+void APIClass::LButtonDown(USHORT x, USHORT y) {
 	ShapeList::ShapeData* FindData;
 	if (drawtype == DrawType_None) {
-		FindData=shapelist->find(x, y);
-		if (FindData != shapenum)   {
+		if(shapenum){}
+		FindData = shapelist->find(x, y);
+		if (FindData != shapenum) {
 			shapenum = FindData;
 			InvalidateRect(api_hwnd, 0, true);
 			UpdateWindow(api_hwnd);
@@ -214,19 +304,26 @@ void APIClass::LButtonDown(USHORT x, USHORT y){
 				SetWindowText(api_hwnd, str);
 			}
 		}
+		if (FindData) {
+			oldx = x;
+			oldy = y;
+			DrawTemp();
+			isDrag = 2;
+		}
 	}
 	else {
 		//shapenum = 0;
 		mx = x; my = y;
 		oldx = x; oldy = y;
-		isDrag = true;
+		isDrag = 1;
 	}
 	//SetCapture(api_hwnd);
 }
 void APIClass::MouseMove(USHORT x, USHORT y) {
-	USHORT ex = x,ey=y;
+	USHORT ex = x, ey = y;
 	HDC hdc;
-	if (isDrag) {
+	RECT *rt=&shapenum->rt;
+	if (isDrag==1) {
 		hdc = GetDC(api_hwnd);
 		SetROP2(hdc, R2_NOTXORPEN);
 		switch (drawtype) {
@@ -237,7 +334,7 @@ void APIClass::MouseMove(USHORT x, USHORT y) {
 			LineTo(hdc, ex, ey);
 			break;
 		case DrawType_Circle:
-			Ellipse(hdc,mx,my,oldx,oldy);
+			Ellipse(hdc, mx, my, oldx, oldy);
 			Ellipse(hdc, mx, my, ex, ey);
 			break;
 		case DrawType_Square:
@@ -246,14 +343,23 @@ void APIClass::MouseMove(USHORT x, USHORT y) {
 			break;
 		}
 		oldx = ex; oldy = ey;
-		ReleaseDC(api_hwnd,hdc);
+		ReleaseDC(api_hwnd, hdc);
+	}
+	else if (isDrag == 2) {
+		/*SetRect(rt, rt->left + ex - oldx, rt->top + ex - oldx,
+			rt->right + ex - oldx, rt->bottom + ex - oldx);*/
+		DrawTemp();
+		OffsetRect(rt, ex - oldx, ey - oldy);
+		oldx = ex;
+		oldy = ey;
+		DrawTemp();
 	}
 }
 void APIClass::Paint(HWND hwnd) {
 	PAINTSTRUCT ps;
-	HDC hdc = BeginPaint(hwnd,&ps);
-	RECT *rt;
-	for(auto d=shapelist->data;d!=shapelist->data+shapelist->len;d++){
+	HDC hdc = BeginPaint(hwnd, &ps);
+	RECT* rt;
+	for (auto d = shapelist->data;d != shapelist->data + shapelist->len;d++) {
 		rt = &d->rt;
 		switch (d->type) {
 		case DrawType_Circle:
@@ -263,7 +369,7 @@ void APIClass::Paint(HWND hwnd) {
 			Rectangle(hdc, rt->left, rt->top, rt->right, rt->bottom);
 			break;
 		case DrawType_Line:
-			MoveToEx(hdc, rt->left, rt->top,0);
+			MoveToEx(hdc, rt->left, rt->top, 0);
 			LineTo(hdc, rt->right, rt->bottom);
 			break;
 		}
@@ -272,11 +378,11 @@ void APIClass::Paint(HWND hwnd) {
 	//
 	EndPaint(hwnd, &ps);
 }
-void APIClass::Command(USHORT type,WPARAM wp) {
+void APIClass::Command(USHORT type, WPARAM wp) {
 	switch (type) {
 	case DrawType_None:
 		drawtype = type;
-		isDrag = false;
+		isDrag = 0;
 		CheckMenuItem((HMENU)wp, DrawType_None, MF_BYCOMMAND | MF_CHECKED);
 		break;
 	case DrawType_Circle:
@@ -303,7 +409,7 @@ void APIClass::Command(USHORT type,WPARAM wp) {
 }
 void APIClass::RButtonUp(USHORT x, USHORT y) {
 	HMENU hpop = CreatePopupMenu();
-	POINT point = { x ,y};
+	POINT point = { x ,y };
 	if (isDrag)SendMessage(api_hwnd, WM_LBUTTONUP, 0, 0);
 	ClientToScreen(api_hwnd, &point);
 	AppendMenu(hpop, MF_STRING, DrawType_None, L"선택");
@@ -322,10 +428,10 @@ void APIClass::RButtonUp(USHORT x, USHORT y) {
 }
 APIClass* api;
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-	
+	static HCURSOR hcursor;
 	/*
 	switch (msg) {
-	
+
 	case WM_CREATE:
 	{
 		TCITEM tie;
@@ -372,22 +478,27 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	{
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(hwnd, &ps);
-		
+
 		EndPaint(hwnd, &ps);
 	}
 		return 0;*/
-	switch(msg){
+	switch (msg) {
 	case WM_CREATE:api->Create(hwnd); return 0;
-	case WM_COMMAND:api->Command(LOWORD(wp),wp); return 0;
+	case WM_COMMAND:api->Command(LOWORD(wp), wp); return 0;
 	case WM_PAINT:api->Paint(hwnd); return 0;
 	case WM_MOUSEMOVE:api->MouseMove(LOWORD(lp), HIWORD(lp)); return 0;
 		return 0;
-	case WM_LBUTTONDOWN:
-		api->LButtonDown(LOWORD(lp),HIWORD(lp)); return 0;
+	case WM_LBUTTONDOWN:hcursor = LoadCursor(0, IDC_HAND);
+		api->LButtonDown(LOWORD(lp), HIWORD(lp)); return 0;
 	case WM_LBUTTONUP:
+		hcursor = LoadCursor(0, IDC_ARROW);
 		api->LButtonUp(); return 0;
 	case WM_RBUTTONUP:api->RButtonUp(LOWORD(lp), HIWORD(lp));
 		return 0;
+	case WM_SETCURSOR:
+		if (!api->OnSetCursor())return(DefWindowProc(hwnd, WM_SETCURSOR, wp, lp));
+		return 0;
+		
 	case WM_DESTROY:
 		api->Destroy();
 		return 0;
@@ -412,18 +523,23 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 		0, (HMENU)0, hin, 0);
 	ShowWindow(hwnd, 1);
-	g_hInst=g_hin = hin;
+	hin;
 	MSG msg;
-	HACCEL hAccel=LoadAccelerators(
-		g_hin,MAKEINTRESOURCE(IDR_ACCELERATOR1)
+#ifdef RESOURCE
+	HACCEL hAccel = LoadAccelerators(
+		hin, MAKEINTRESOURCE(IDR_ACCELERATOR1)
 	);
-
+#endif
 	while (GetMessage(&msg, 0, 0, 0)) {
+#ifdef RESOURCE
 		if (!TranslateAccelerator(hwnd, hAccel, &msg)) {
+#endif
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
+#ifdef RESOURCE
 	}
+#endif
 	delete api;
 	return 0;
 }
