@@ -86,18 +86,26 @@ enum {
 enum {
 	Drag_None = 0, Drag_Draw = 1, Drag_Move, Drag_Size
 };
+enum {
+	Line_Normal,Line_Reverse
+};
 inline int LP_GetMouseX(LPARAM lp) { return LOWORD(lp); }
 inline int LP_GetMouseY(LPARAM lp) { return HIWORD(lp); }
 struct ShapeList {
 	struct ShapeData {
 		RECT rt;
+		UINT depth;
 		USHORT type;
+		UCHAR linetype;
+		
 	};
 	ShapeData* data;
 	UINT capa, len;
 	ShapeList() {
-		capa = 10; len = 0;
+		capa = 100; len = 0;
 		data = (ShapeData*)malloc(sizeof(ShapeData) * capa);
+		//for(int i=0;i<capa;i++)
+		memset(data, 0, sizeof(ShapeData) * capa);
 	}
 	void AdjustRect(USHORT type,RECT *rt) {
 		long r;
@@ -298,8 +306,6 @@ public:
 	void RButtonUp(USHORT, USHORT);
 	void Destroy() { PostQuitMessage(0); }
 	~APIClass() { delete shapelist; }
-
-
 };
 void APIClass::LButtonDown(USHORT x, USHORT y) {
 	ShapeList::ShapeData* FindData;
