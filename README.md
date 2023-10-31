@@ -2,7 +2,9 @@ JPCode : 일본어 로마자 표기->가나 변경<br/>
 APIDraw:그림판<br/>
 Quick~~:정렬 알고리즘 연습<br/>
 
-
+hDlg2 = CreateDialog(hInst,MAKEINTRESOURCE(IDD_DIALOG1), hWnd, MsgDlg2);
+                    ShowWindow(hDlg2, SW_SHOW );
+                    
 Am
 Am-in ha
 Na
