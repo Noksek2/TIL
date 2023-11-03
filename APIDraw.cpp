@@ -5,83 +5,11 @@
 #include "resource.h"
 #endif
 
-//#define DIALOG
-#ifdef DIALOG
-using namespace Gdiplus;
-#pragma comment(lib,"gdiplus")
-#pragma comment(lib,"comctl32.lib")
-HWND hRed, hGreen, hBlue;
-HINSTANCE g_hin;
-bool CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-	switch (msg) {
-	case WM_INITDIALOG:
-		return true;
-	case WM_CLOSE:
-		EndDialog(hwnd, LOWORD(wp));
-		return true;
-	case WM_COMMAND:
-		switch (LOWORD(wp)) {
-		case IDOK:
-		case IDCANCEL:
-			EndDialog(hwnd, LOWORD(wp));
-			return true;
-		}
-		break;
-	}
-	return false;
-}
-LRESULT DisplayMessage(HINSTANCE hin, HWND hwnd) {
-	HGLOBAL hg;
-	LPDLGTEMPLATE plate;
-	LPDLGITEMTEMPLATE item;
-	LPWORD pw;
-	LPWSTR pwsz;
-	int n;
-	hg = GlobalAlloc(GMEM_ZEROINIT, 1024);
-	plate = (LPDLGTEMPLATE)GlobalLock(hg);
-
-	plate->style = WS_POPUP | WS_BORDER | WS_SYSMENU | WS_CAPTION;
-	plate->cdit = 1;
-	plate->x = 10;
-	plate->y = 10;
-	plate->cx = 200;
-	plate->cy = 100;
-
-
-	pw = (LPWORD)(plate + 1);
-	*pw++ = 0;
-	*pw++ = 0;
-	pwsz = (LPWSTR)pw;
-	n = MultiByteToWideChar(CP_ACP, 0, "김대중 Runtime", -1, pwsz, 50) + 1;
-	pw += n;
-
-	pw = (LPWORD)((ULONG)pw + 3 & 0xfffffffc);
-	item = (LPDLGITEMTEMPLATE)pw;
-	item->x = 50; item->y = 50;
-	item->cx = 100; item->cy = 20;
-	item->id = IDOK; item->style = WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON;
-
-	pw = (LPWORD)(item + 1);
-	*pw++ = 0xFFFF;
-	*pw++ = 0x0080;
-	pwsz = (LPWSTR)pw;
-	n = MultiByteToWideChar(CP_ACP, 0, "확인", -1, pwsz, 50) + 1;
-	pw += n;
-	pw = (LPWORD)((ULONG)pw + 3 & 0xfffffffc);
-	*pw++ = 0;
-
-	LRESULT res;
-	GlobalUnlock(hg);
-	res = DialogBoxIndirect(hin, (LPDLGTEMPLATE)hg,
-		hwnd, (DLGPROC)DialogProc);
-	GlobalFree(hg);
-	return res;
-}
-#endif
-
 enum {
 	DrawType_None, DrawType_Circle, DrawType_Square, DrawType_Line,
-	Menu_Delete, Menu_Clear, Menu_Exit
+	Menu_Delete, Menu_Clear, Menu_Prop,
+	Menu_Forward, Menu_FarForward, Menu_Backward, Menu_FarBack,
+	Menu_Exit
 };
 enum {
 	Drag_None = 0, Drag_Draw = 1, Drag_Move, Drag_Size
@@ -98,6 +26,7 @@ struct ShapeList {
 	};
 	ShapeData* data;
 	UINT capa, len;
+	COLORREF nowcol[2];
 	ShapeList() {
 		capa = 10; len = 0;
 		data = (ShapeData*)malloc(sizeof(ShapeData) * capa);
@@ -106,18 +35,50 @@ struct ShapeList {
 		if (len >= capa)return;
 		data[len].type = type;
 		data[len].thick = 1;
-		data[len].linecolor = RGB(0,0,0);
-		data[len].planecolor = RGB(255, 255, 255);
-		if(type!=DrawType_Line)AdjustRect(mrt);
+		data[len].linecolor = nowcol[0];
+		data[len].planecolor = nowcol[1];
+		if (type != DrawType_Line)AdjustRect(mrt);
 		memcpy(&data[len++].rt, mrt, sizeof(RECT));
 	}
+	ShapeData* forward_shape(ShapeData* d,bool isfar=false) {
+		ShapeData tmp = *d;
+		if (isfar) {
+			for (ShapeData* p = d + 1; p < data + len; p++) {
+				*(p - 1) = *p;
+			}
+			*(data + len - 1) = tmp;
+			return (data + len - 1);
+		}
+		else if (d + 1 < data + len) {
+			*d = *(d + 1);
+			*(d + 1) = tmp;
+			return d + 1;
+		}
+		return d;
+	}
+	ShapeData* backward_shape(ShapeData* d, bool isfar=false) {
+		ShapeData tmp = *d;
+		if (isfar) {
+			for (ShapeData* p = d-1; p >= data; p--) {
+				*(p + 1) = *p;
+			}
+			*(data) = tmp;
+			return (data);
+		}
+		else if (d - 1 >= data) {
+			*d = *(d - 1);
+			*(d - 1) = tmp;
+			return d - 1;
+		}
+		return d; 
+	}
 	void delete_shape(ShapeData* d) {
-				
-		for(ShapeData* p=d+1;p<data+len;p++){
-			*(p-1) = *p;
+
+		for (ShapeData* p = d + 1; p < data + len; p++) {
+			*(p - 1) = *p;
 		}
 		len--;
-		
+
 
 		/*if (len > 0 && d < data + len)
 			*d = data[--len];*/
@@ -128,9 +89,9 @@ struct ShapeList {
 	void AdjustRect(RECT* r) {
 		long t;
 		if (r->left > r->right) {
-			t= r->right;
+			t = r->right;
 			r->right = r->left;
-			r-> left = t;
+			r->left = t;
 		}
 		if (r->top > r->bottom) {
 			t = r->bottom;
@@ -141,7 +102,7 @@ struct ShapeList {
 	ShapeData* find(USHORT x, USHORT y) {
 		POINT pt = { x,y };
 		RECT temprt;
-		
+
 		for (auto d = data + len - 1; d >= data; d--) {
 			{
 				if (d->type == DrawType_Line) {
@@ -163,6 +124,8 @@ struct ShapeList {
 class APIClass {
 private:
 	USHORT mx, my, oldx, oldy;
+	CHOOSECOLOR col;
+	COLORREF coltemp[16];
 	inline void DrawOneTrack(HDC hdc, USHORT x, USHORT y) {
 		Rectangle(hdc, x - 5, y - 5, x + 5, y + 5);
 	}
@@ -236,7 +199,7 @@ private:
 			DrawOneTrack(hdc, rt.right, rt.bottom);
 		}
 		else {
-			
+
 			DrawOneTrack(hdc, rt.left, rt.top);
 			DrawOneTrack(hdc, rt.right, rt.bottom);
 		}
@@ -256,10 +219,19 @@ public:
 		shapenum = 0;
 		shapelist = new ShapeList();
 		isDrag = 0;
+
+		shapelist->nowcol[0] = RGB(0,0,0);
+		shapelist->nowcol[1] = RGB(255, 255, 255);
+		memset(&col, 0, sizeof(CHOOSECOLOR));
+		col.lStructSize = sizeof(CHOOSECOLOR);
+		col.lpCustColors = coltemp;
 		drawtype = DrawType_None;
 	}
 	void Create(HWND hwnd) {
 		api_hwnd = hwnd;
+		col.hwndOwner = hwnd;
+		for (int i = 0; i < 16; i++)
+			coltemp[i] = RGB(255, 255, 255);
 	}
 	void Paint(HWND hwnd);
 	void Command(USHORT, WPARAM);
@@ -297,7 +269,7 @@ public:
 		}
 		else if (isDrag == Drag_Size) {
 			tracknum = 0;
-			if(shapenum->type!=DrawType_Line)
+			if (shapenum->type != DrawType_Line)
 				shapelist->AdjustRect(&shapenum->rt);
 			InvalidateRect(api_hwnd, 0, true);
 		}
@@ -351,7 +323,7 @@ void APIClass::MouseMove(USHORT x, USHORT y) {
 	USHORT ex = x, ey = y;
 	HDC hdc;
 	RECT* rt = &shapenum->rt;
-	switch(isDrag) {
+	switch (isDrag) {
 	case Drag_Draw:
 		hdc = GetDC(api_hwnd);
 		SetROP2(hdc, R2_NOTXORPEN);
@@ -385,12 +357,12 @@ void APIClass::MouseMove(USHORT x, USHORT y) {
 		break;
 	case Drag_Size:
 		DrawTemp();
-		switch(tracknum) {
+		switch (tracknum) {
 		case 1:
 			rt->left = x;
 			rt->top = y;
 			break;
-		case 2:rt->top = y;break;
+		case 2:rt->top = y; break;
 		case 3:rt->right = x; rt->top = y; break;
 
 		case 4:rt->left = x; break;
@@ -402,7 +374,7 @@ void APIClass::MouseMove(USHORT x, USHORT y) {
 			rt->right = x;
 			rt->bottom = y;
 			//oldx = x; oldy = y;
-			
+
 			break;
 		}
 		DrawTemp();
@@ -421,10 +393,10 @@ void APIClass::Paint(HWND hwnd) {
 		else hpen = CreatePen(PS_INSIDEFRAME, d->thick, d->linecolor);
 		oldpen = (HPEN)SelectObject(hdc, hpen);
 
-		if(d->planecolor==(DWORD)-1)hbrush= (HBRUSH)GetStockObject(NULL_BRUSH);
+		if (d->planecolor == (DWORD)-1)hbrush = (HBRUSH)GetStockObject(NULL_BRUSH);
 		else hbrush = (HBRUSH)CreateSolidBrush(d->planecolor);
 		oldbrush = (HBRUSH)SelectObject(hdc, hbrush);
-		
+
 
 		switch (d->type) {
 		case DrawType_Circle:
@@ -439,10 +411,10 @@ void APIClass::Paint(HWND hwnd) {
 			break;
 		}
 		SelectObject(hdc, oldpen);
-		if(d->thick)DeleteObject(hpen);
+		if (d->thick)DeleteObject(hpen);
 
 		SelectObject(hdc, oldbrush);
-		if (d->planecolor==(COLORREF)-1)DeleteObject(hbrush);
+		if (d->planecolor == (COLORREF)-1)DeleteObject(hbrush);
 	}
 	if (shapenum)DrawTracker(hdc);
 	//
@@ -459,6 +431,42 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 	case DrawType_Square:
 	case DrawType_Line:
 		drawtype = type;
+		break;
+	case Menu_FarForward:
+		if (drawtype == DrawType_None && shapenum) {
+			shapenum = shapelist->forward_shape(shapenum,true);
+			InvalidateRect(api_hwnd, 0, true);
+		}
+		break;
+	case Menu_FarBack:
+		if (drawtype == DrawType_None && shapenum) {
+			shapenum = shapelist->backward_shape(shapenum,true);
+			InvalidateRect(api_hwnd, 0, true);
+		}
+		break;
+	case Menu_Forward:
+		if (drawtype == DrawType_None && shapenum) {
+			shapenum=shapelist->forward_shape(shapenum);
+			InvalidateRect(api_hwnd, 0, true);
+		}
+		break;
+	case Menu_Backward:
+		if (drawtype == DrawType_None && shapenum) {
+			shapenum=shapelist->backward_shape(shapenum);
+			InvalidateRect(api_hwnd, 0, true);
+		}
+		break;
+	case Menu_Prop: {
+		if (ChooseColor(&col)) {
+			if (drawtype == DrawType_None && shapenum) {
+				shapenum->planecolor = col.rgbResult;
+				InvalidateRect(api_hwnd, 0, true);
+			}
+			else {
+				shapelist->nowcol[1] = col.rgbResult;
+			}
+		}
+	}
 		break;
 	case Menu_Delete:
 		if (shapenum) {
@@ -479,6 +487,7 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 }
 void APIClass::RButtonUp(USHORT x, USHORT y) {
 	HMENU hpop = CreatePopupMenu();
+	HMENU hsubmenu = CreatePopupMenu();
 	POINT point = { x ,y };
 	if (isDrag)SendMessage(api_hwnd, WM_LBUTTONUP, 0, 0);
 	ClientToScreen(api_hwnd, &point);
@@ -486,9 +495,19 @@ void APIClass::RButtonUp(USHORT x, USHORT y) {
 	AppendMenu(hpop, MF_STRING, DrawType_Circle, L"원");
 	AppendMenu(hpop, MF_STRING, DrawType_Square, L"사각형");
 	AppendMenu(hpop, MF_STRING, DrawType_Line, L"직선");
+	AppendMenu(hpop, MF_SEPARATOR, 0, 0);
 
-	AppendMenu(hpop, MF_STRING, Menu_Delete, L"선택 도형 삭제\tDel");
-	AppendMenu(hpop, MF_STRING, Menu_Clear, L"전체 삭제\tCtrl+Del");
+	AppendMenu(hpop, MF_STRING | MF_POPUP, (UINT_PTR)hsubmenu, L"정렬/삭제");
+	AppendMenu(hsubmenu, MF_STRING, Menu_Forward, L"앞으로 이동");
+	AppendMenu(hsubmenu, MF_STRING, Menu_FarForward, L"맨 앞으로 이동");
+	AppendMenu(hsubmenu, MF_STRING, Menu_Backward, L"뒤로 이동");
+	AppendMenu(hsubmenu, MF_STRING, Menu_FarBack, L"맨 뒤로 이동");
+	AppendMenu(hsubmenu, MF_SEPARATOR, 0, 0);
+	AppendMenu(hsubmenu, MF_STRING, Menu_Delete, L"선택한 도형 삭제\tDel");
+	AppendMenu(hsubmenu, MF_STRING, Menu_Clear, L"전체 삭제\tCtrl+Del");
+
+	AppendMenu(hpop, MF_SEPARATOR, 0, 0);
+	AppendMenu(hpop, MF_STRING, Menu_Prop, L"속성");
 	AppendMenu(hpop, MF_SEPARATOR, 0, 0);
 	AppendMenu(hpop, MF_STRING, Menu_Exit, L"QUIT");
 	CheckMenuItem(hpop, drawtype, MF_BYCOMMAND | MF_CHECKED);
@@ -499,59 +518,6 @@ void APIClass::RButtonUp(USHORT x, USHORT y) {
 APIClass* api;
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	static HCURSOR hcursor;
-	/*
-	switch (msg) {
-
-	case WM_CREATE:
-	{
-		TCITEM tie;
-		InitCommonControls();
-		hTab = CreateWindow(WC_TABCONTROL, L"", WS_CHILD | WS_VISIBLE
-
-			| WS_CLIPSIBLINGS,
-
-			0, 0, 0, 0, hwnd, (HMENU)10, g_hin, NULL);
-
-		hStatic = CreateWindow(L"static", L"뭔 짓을 했길래 안 되는거야", WS_CHILD | WS_VISIBLE,
-
-			0, 0, 0, 0, hwnd, (HMENU)9, g_hin, NULL);
-
-		tie.mask = TCIF_TEXT;
-		tie.pszText = (WCHAR*)L"GUU";
-		TabCtrl_InsertItem(hTab, 0, &tie);
-		tie.pszText = (WCHAR*)L"MUU";
-		TabCtrl_InsertItem(hTab, 1, &tie);
-	}
-	return 0;
-	case WM_SIZE:
-
-		MoveWindow(hTab, 0, 0, LOWORD(lp), HIWORD(lp), TRUE);
-
-		MoveWindow(hStatic, LOWORD(lp) / 2 - 250, HIWORD(lp) / 2, 500, 25, TRUE);
-		GetClientRect(hwnd, &rt);
-		InvalidateRect(hwnd, 0, true);
-		return 0;
-	case WM_NOTIFY:
-
-		switch (((LPNMHDR)lp)->code) {
-
-		case TCN_SELCHANGE:
-
-			SetWindowText(hStatic, L"SHIT THE FUCK");
-
-			break;
-
-		}
-
-		return 0;
-	case WM_PAINT:
-	{
-		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(hwnd, &ps);
-
-		EndPaint(hwnd, &ps);
-	}
-		return 0;*/
 	switch (msg) {
 	case WM_CREATE:api->Create(hwnd); return 0;
 	case WM_COMMAND:api->Command(LOWORD(wp), wp); return 0;
