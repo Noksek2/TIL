@@ -16,6 +16,9 @@ enum {
 };
 inline int LP_GetMouseX(LPARAM lp) { return LOWORD(lp); }
 inline int LP_GetMouseY(LPARAM lp) { return HIWORD(lp); }
+
+LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 struct ShapeList {
 	struct ShapeData {
 		RECT rt;
@@ -210,12 +213,12 @@ private:
 public:
 	ShapeList* shapelist;
 	HWND api_hwnd;
-
+	HINSTANCE g_hin;
 	ShapeList::ShapeData* shapenum;
 	USHORT isDrag;
 	UCHAR tracknum;
 	USHORT drawtype;
-	APIClass() {
+	APIClass(HINSTANCE hin):g_hin(hin) {
 		shapenum = 0;
 		shapelist = new ShapeList();
 		isDrag = 0;
@@ -277,6 +280,18 @@ public:
 	}
 	void RButtonUp(USHORT, USHORT);
 	void Destroy() { PostQuitMessage(0); }
+
+	void Set_ShapeColor() {
+		if (ChooseColor(&col)) {
+			if (drawtype == DrawType_None && shapenum) {
+				shapenum->planecolor = col.rgbResult;
+				InvalidateRect(api_hwnd, 0, true);
+			}
+			else {
+				shapelist->nowcol[1] = col.rgbResult;
+			}
+		}
+	}
 	~APIClass() { delete shapelist; }
 
 
@@ -457,15 +472,20 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 		}
 		break;
 	case Menu_Prop: {
-		if (ChooseColor(&col)) {
-			if (drawtype == DrawType_None && shapenum) {
-				shapenum->planecolor = col.rgbResult;
-				InvalidateRect(api_hwnd, 0, true);
-			}
-			else {
-				shapelist->nowcol[1] = col.rgbResult;
-			}
-		}
+		WNDCLASSEXW wc = { 0 };
+		wc.cbSize = sizeof(WNDCLASSEXW);
+		wc.lpfnWndProc = (WNDPROC)DialogProc;
+		wc.hInstance = g_hin;
+		wc.hbrBackground = GetSysColorBrush(COLOR_3DFACE);
+		wc.lpszClassName = L"DialogClass";
+		
+		RegisterClassExW(&wc);
+		HWND hdialog=CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
+			L"DialogClass", L"Dialog Box",
+			WS_VISIBLE | WS_SYSMENU | WS_CAPTION, 100, 100, 200, 150,
+			NULL, NULL, g_hin, NULL);
+		
+		
 	}
 		break;
 	case Menu_Delete:
@@ -516,6 +536,29 @@ void APIClass::RButtonUp(USHORT x, USHORT y) {
 	DestroyMenu(hpop);
 }
 APIClass* api;
+LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch (msg) {
+	case WM_CREATE:
+		CreateWindowW(L"button", L"선 색상",
+			WS_VISIBLE | WS_CHILD,
+			100, 50, 80, 25, hwnd, (HMENU)1, NULL, NULL);
+		CreateWindowW(L"button", L"내부 색상",
+			WS_VISIBLE | WS_CHILD,
+			100, 80, 80, 25, hwnd, (HMENU)2, NULL, NULL);
+		break;
+	case WM_COMMAND:
+		switch (LOWORD(wParam)) {
+		case 1:break;
+		case 2:api->Set_ShapeColor(); break;
+		}
+		//DestroyWindow(hwnd);
+		break;
+	case WM_CLOSE:
+		DestroyWindow(hwnd);
+		break;
+	}
+	return (DefWindowProcW(hwnd, msg, wParam, lParam));
+}
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	static HCURSOR hcursor;
 	switch (msg) {
@@ -544,7 +587,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 	HWND hwnd;
 	WNDCLASS win = { 0 };
-	api = new APIClass();
+	api = new APIClass(hin);
 	win.hbrBackground = (HBRUSH)GetStockObject(WHITE_BRUSH);
 	//CreateHatchBrush(HS_DIAGCROSS,RGB(0, 150, 123));
 	win.hIcon = LoadIcon(0, IDI_APPLICATION);
@@ -579,3 +622,7 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 	delete api;
 	return 0;
 }
+/*
+
+https://stpetrus27.wordpress.com/2018/06/04/vc-vc-dialog-without-the-resource-file/
+*/
