@@ -9,7 +9,7 @@ enum {
 	DrawType_None, DrawType_Circle, DrawType_Square, DrawType_Line,
 	Menu_Delete, Menu_Clear, Menu_Prop,
 	Menu_Forward, Menu_FarForward, Menu_Backward, Menu_FarBack,
-	Menu_Exit
+	Menu_Exit,ID_Scroll,
 };
 enum {
 	Drag_None = 0, Drag_Draw = 1, Drag_Move, Drag_Size
@@ -30,20 +30,21 @@ struct ShapeList {
 	ShapeData* data;
 	UINT capa, len;
 	COLORREF nowcol[2];
+	USHORT defthick;
 	ShapeList() {
-		capa = 10; len = 0;
+		capa = 10; len = 0;defthick = 1;
 		data = (ShapeData*)malloc(sizeof(ShapeData) * capa);
 	}
 	void append(USHORT type, RECT* mrt) {
 		if (len >= capa)return;
 		data[len].type = type;
-		data[len].thick = 1;
+		data[len].thick = defthick;
 		data[len].linecolor = nowcol[0];
 		data[len].planecolor = nowcol[1];
 		if (type != DrawType_Line)AdjustRect(mrt);
 		memcpy(&data[len++].rt, mrt, sizeof(RECT));
 	}
-	ShapeData* forward_shape(ShapeData* d,bool isfar=false) {
+	ShapeData* forward_shape(ShapeData* d, bool isfar = false) {
 		ShapeData tmp = *d;
 		if (isfar) {
 			for (ShapeData* p = d + 1; p < data + len; p++) {
@@ -59,10 +60,10 @@ struct ShapeList {
 		}
 		return d;
 	}
-	ShapeData* backward_shape(ShapeData* d, bool isfar=false) {
+	ShapeData* backward_shape(ShapeData* d, bool isfar = false) {
 		ShapeData tmp = *d;
 		if (isfar) {
-			for (ShapeData* p = d-1; p >= data; p--) {
+			for (ShapeData* p = d - 1; p >= data; p--) {
 				*(p + 1) = *p;
 			}
 			*(data) = tmp;
@@ -73,7 +74,7 @@ struct ShapeList {
 			*(d - 1) = tmp;
 			return d - 1;
 		}
-		return d; 
+		return d;
 	}
 	void delete_shape(ShapeData* d) {
 
@@ -124,6 +125,38 @@ struct ShapeList {
 		}
 	}
 };
+class CScroll {
+public:
+	WORD pos;
+	HWND hscroll;
+	WORD pos_max, inc;
+	void Create(HWND hwnd, HINSTANCE g_hin, UINT id, int x, int y, WORD _max = 255, int width = 200) {
+		hscroll = CreateWindow(L"scrollbar", 0, WS_CHILD | WS_VISIBLE |
+			SBS_HORZ, x, y, width, 20, hwnd, (HMENU)id, g_hin, 0);
+		SetScrollRange(hscroll, SB_CTL, 0, _max, true);
+		pos_max = _max;
+		inc = max(1, pos_max / 10);
+		SetScrollPos(hscroll, SB_CTL, 0, true);
+	}
+	void Process(WPARAM wp, LPARAM lp) {
+		WORD msgtype = LOWORD(wp),
+			temp = HIWORD(wp);
+		switch (msgtype) {
+		case SB_LINELEFT:pos = max(0, pos - 1);break;
+		case SB_LINERIGHT:pos = min(pos_max, pos + 1);break;
+		case SB_PAGELEFT:pos = max(0, pos - inc);break;
+		case SB_PAGERIGHT:pos = min(pos_max, pos + inc);break;
+		case SB_THUMBTRACK:pos = temp;break;
+		}
+		SetScrollPos((HWND)lp, SB_CTL, pos, true);
+	}
+	void Set(WORD _pos) {
+		pos = _pos;
+		SetScrollPos(hscroll, SB_CTL, pos, true);
+	}
+};
+CScroll dlg_scroll;
+
 class APIClass {
 private:
 	USHORT mx, my, oldx, oldy;
@@ -212,19 +245,19 @@ private:
 		IDC_SIZEWE,IDC_SIZENESW,IDC_SIZENS,IDC_SIZENWSE };
 public:
 	ShapeList* shapelist;
-	HWND api_hwnd;
+	HWND api_hwnd,dialog_hwnd;
 	HINSTANCE g_hin;
 	ShapeList::ShapeData* shapenum;
 	USHORT isDrag;
 	UCHAR tracknum;
 	USHORT drawtype;
-	APIClass(HINSTANCE hin):g_hin(hin) {
+	APIClass(HINSTANCE hin) :g_hin(hin) {
 		shapenum = 0;
 		shapelist = new ShapeList();
 		isDrag = 0;
 
-		shapelist->nowcol[0] = RGB(0,0,0);
-		shapelist->nowcol[1] = RGB(255, 255, 255);
+		shapelist->nowcol[0] = RGB(0, 0, 0);
+		shapelist->nowcol[1] = -1;//RGB(255, 255, 255);
 		memset(&col, 0, sizeof(CHOOSECOLOR));
 		col.lStructSize = sizeof(CHOOSECOLOR);
 		col.lpCustColors = coltemp;
@@ -257,6 +290,7 @@ public:
 		return false;
 	}
 	void LButtonUp() {
+		
 		if (isDrag == Drag_Draw) {
 			RECT rt; isDrag = 0;
 			if (abs((mx - oldx) * (my - oldy)) > 100) {
@@ -277,18 +311,25 @@ public:
 			InvalidateRect(api_hwnd, 0, true);
 		}
 		isDrag = 0;
+		{
+			wchar_t str[128];
+			wsprintf(str, L"LBTNUP shape %#X drag %d\n", shapenum, isDrag);
+			OutputDebugString(str);
+		}
 	}
 	void RButtonUp(USHORT, USHORT);
 	void Destroy() { PostQuitMessage(0); }
 
-	void Set_ShapeColor() {
+	void Set_ShapeColor(bool isline=false) {
 		if (ChooseColor(&col)) {
 			if (drawtype == DrawType_None && shapenum) {
-				shapenum->planecolor = col.rgbResult;
+				if(!isline)shapenum->planecolor = col.rgbResult;
+				else shapenum->linecolor = col.rgbResult;
 				InvalidateRect(api_hwnd, 0, true);
 			}
 			else {
-				shapelist->nowcol[1] = col.rgbResult;
+				if(!isline)shapelist->nowcol[1] = col.rgbResult;
+				else shapelist->nowcol[0] = col.rgbResult;
 			}
 		}
 	}
@@ -297,7 +338,10 @@ public:
 
 };
 void APIClass::LButtonDown(USHORT x, USHORT y) {
-	ShapeList::ShapeData* FindData;
+	ShapeList::ShapeData* FindData=0;
+	if (isDrag == 3) {
+		OutputDebugString(L"찾았");
+	}
 	if (drawtype == DrawType_None) {
 		if (shapenum) {
 			tracknum = TrackerHit(x, y);
@@ -305,26 +349,22 @@ void APIClass::LButtonDown(USHORT x, USHORT y) {
 				isDrag = Drag_Size;
 				oldx = x;
 				oldy = y;
-				return;
+				goto END;
 			}
 		}
 		FindData = shapelist->find(x, y);
-		if (FindData != shapenum) {
-			shapenum = FindData;
-			InvalidateRect(api_hwnd, 0, true);
-			UpdateWindow(api_hwnd);
-			{
-				wchar_t str[128];
-				wsprintf(str, L"%#X", shapenum);
-				SetWindowText(api_hwnd, str);
-			}
-		}
+		shapenum = FindData;
 		if (FindData) {
 			oldx = x;
 			oldy = y;
 			DrawTemp();
 			isDrag = 2;
 		}
+		else {
+			isDrag = 0;
+		}
+		InvalidateRect(api_hwnd, 0, true);
+		UpdateWindow(api_hwnd);
 	}
 	else {
 		//shapenum = 0;
@@ -332,8 +372,16 @@ void APIClass::LButtonDown(USHORT x, USHORT y) {
 		oldx = x; oldy = y;
 		isDrag = 1;
 	}
+END:{
+	if(shapenum)dlg_scroll.Set(shapenum->thick);
+	else dlg_scroll.Set(shapelist->defthick);
+		wchar_t str[128];
+		wsprintf(str, L"LBTNDOWN shape %#X drag %d (%d,%d) track %d finddata %#X\n", shapenum, isDrag,x,y, tracknum,FindData);
+		OutputDebugString(str);
+	}
 	//SetCapture(api_hwnd);
 }
+
 void APIClass::MouseMove(USHORT x, USHORT y) {
 	USHORT ex = x, ey = y;
 	HDC hdc;
@@ -395,6 +443,11 @@ void APIClass::MouseMove(USHORT x, USHORT y) {
 		DrawTemp();
 		break;
 	}
+	{
+		wchar_t str[128];
+		wsprintf(str, L"MOVE shape %#X drag %d (%d,%d)\n", shapenum, isDrag, x, y);
+		OutputDebugString(str);
+	}
 }
 void APIClass::Paint(HWND hwnd) {
 	PAINTSTRUCT ps;
@@ -449,45 +502,47 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 		break;
 	case Menu_FarForward:
 		if (drawtype == DrawType_None && shapenum) {
-			shapenum = shapelist->forward_shape(shapenum,true);
+			shapenum = shapelist->forward_shape(shapenum, true);
 			InvalidateRect(api_hwnd, 0, true);
 		}
 		break;
 	case Menu_FarBack:
 		if (drawtype == DrawType_None && shapenum) {
-			shapenum = shapelist->backward_shape(shapenum,true);
+			shapenum = shapelist->backward_shape(shapenum, true);
 			InvalidateRect(api_hwnd, 0, true);
 		}
 		break;
 	case Menu_Forward:
 		if (drawtype == DrawType_None && shapenum) {
-			shapenum=shapelist->forward_shape(shapenum);
+			shapenum = shapelist->forward_shape(shapenum);
 			InvalidateRect(api_hwnd, 0, true);
 		}
 		break;
 	case Menu_Backward:
 		if (drawtype == DrawType_None && shapenum) {
-			shapenum=shapelist->backward_shape(shapenum);
+			shapenum = shapelist->backward_shape(shapenum);
 			InvalidateRect(api_hwnd, 0, true);
 		}
 		break;
 	case Menu_Prop: {
-		WNDCLASSEXW wc = { 0 };
-		wc.cbSize = sizeof(WNDCLASSEXW);
-		wc.lpfnWndProc = (WNDPROC)DialogProc;
-		wc.hInstance = g_hin;
-		wc.hbrBackground = GetSysColorBrush(COLOR_3DFACE);
-		wc.lpszClassName = L"DialogClass";
-		
-		RegisterClassExW(&wc);
-		HWND hdialog=CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
-			L"DialogClass", L"Dialog Box",
-			WS_VISIBLE | WS_SYSMENU | WS_CAPTION, 100, 100, 200, 150,
-			NULL, NULL, g_hin, NULL);
-		
-		
+		if (!IsWindow(dialog_hwnd)) {
+			WNDCLASSEXW wc = { 0 };
+			wc.cbSize = sizeof(WNDCLASSEXW);
+			wc.lpfnWndProc = (WNDPROC)DialogProc;
+			wc.hInstance = g_hin;
+			wc.hbrBackground = GetSysColorBrush(COLOR_3DFACE);
+			wc.lpszClassName = L"DialogClass";
+
+			RegisterClassExW(&wc);
+
+			dialog_hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
+				L"DialogClass", L"Dialog Box",
+				WS_VISIBLE | WS_SYSMENU | WS_CAPTION, 100, 100, 200, 150,
+				NULL, NULL, g_hin, NULL);
+		}
+
 	}
-		break;
+				  break;
 	case Menu_Delete:
 		if (shapenum) {
 			shapelist->delete_shape(shapenum);
@@ -536,9 +591,11 @@ void APIClass::RButtonUp(USHORT x, USHORT y) {
 	DestroyMenu(hpop);
 }
 APIClass* api;
+
 LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 	case WM_CREATE:
+		dlg_scroll.Create(hwnd, api->g_hin, ID_Scroll, 10, 10, 10,100);
 		CreateWindowW(L"button", L"선 색상",
 			WS_VISIBLE | WS_CHILD,
 			100, 50, 80, 25, hwnd, (HMENU)1, NULL, NULL);
@@ -548,10 +605,18 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		break;
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
-		case 1:break;
+		case 1:api->Set_ShapeColor(true);break;
 		case 2:api->Set_ShapeColor(); break;
 		}
 		//DestroyWindow(hwnd);
+		break;
+	case WM_HSCROLL:
+		if ((HWND)lParam == dlg_scroll.hscroll) {
+			dlg_scroll.Process(wParam, lParam);
+			if (api->shapenum)api->shapenum->thick = dlg_scroll.pos;
+			else api->shapelist->defthick = dlg_scroll.pos;
+			InvalidateRect(api->api_hwnd, 0, true);
+		}
 		break;
 	case WM_CLOSE:
 		DestroyWindow(hwnd);
