@@ -2,20 +2,26 @@
 #include <d2d1.h>
 #pragma comment(lib, "d2d1.lib")
 using namespace D2D1;
+
 typedef ID2D1Factory D2DFactory;
 typedef ID2D1HwndRenderTarget D2DRender;
 typedef ID2D1SolidColorBrush SolidBrush;
 typedef D2D1_POINT_2F POINT_2F;
+
 class D2D {
 private:
 	D2DFactory* factory;
 	D2DRender* render;
 	SolidBrush* solidbrush;
+	ID2D1GradientStopCollection* gradcollect;
+	ID2D1LinearGradientBrush* gradbrush;
+	ID2D1RadialGradientBrush* radgradbrush;
 public:
 	D2D() {
 		factory = 0;
 		render = 0;
 		solidbrush = 0;
+		gradcollect = 0;
 	}
 	~D2D() {
 		if (factory)factory->Release();
@@ -34,7 +40,7 @@ public:
 			RenderTargetProperties(),
 			HwndRenderTargetProperties(hwnd, SizeU(r.right, r.bottom)),
 			&render);
-		return 1;
+		return true;
 	}
 	void Begin() {
 		render->BeginDraw();
@@ -44,6 +50,50 @@ public:
 	}
 	void End() {
 		render->EndDraw();
+	}
+	void DrawSquare(D2D1_RECT_F rect, float r, float g, float b) {
+		render->CreateSolidColorBrush(ColorF(r, g, b), &solidbrush);
+		render->FillRectangle(rect,solidbrush);
+		//render->DrawRectangle(rect, solidbrush);
+		solidbrush->Release();
+	}
+	void DrawCircle(D2D1_ELLIPSE ellipse, float r, float g, float b) {
+		render->CreateSolidColorBrush(ColorF(r, g, b), &solidbrush);
+		render->FillEllipse(ellipse, solidbrush);
+		//render->DrawRectangle(rect, solidbrush);
+		solidbrush->Release();
+	}
+	void DrawGradSquare(D2D1_RECT_F rect,D2D1_GRADIENT_STOP* gradstop) {
+		render->CreateGradientStopCollection(
+			gradstop, 2, D2D1_GAMMA_2_2,
+			D2D1_EXTEND_MODE_CLAMP,
+			&gradcollect
+		);
+		render->CreateLinearGradientBrush(
+			LinearGradientBrushProperties(
+				Point2F(0, 0),
+				Point2F(150, 150)),
+			gradcollect,
+			&gradbrush
+		);
+		render->FillRectangle(rect, gradbrush);
+		gradbrush->Release();
+	}
+	void DrawGradCircle(D2D1_ELLIPSE ellipse, D2D1_GRADIENT_STOP* gradstop) {
+		render->CreateGradientStopCollection(
+			gradstop, 2, D2D1_GAMMA_2_2,
+			D2D1_EXTEND_MODE_CLAMP,
+			&gradcollect
+		);
+		render->CreateRadialGradientBrush(
+			RadialGradientBrushProperties(
+				Point2F(ellipse.point.x, ellipse.point.y),
+				Point2F(0, 0),ellipse.radiusX, ellipse.radiusY),
+			gradcollect,
+			&radgradbrush
+		);
+		render->FillEllipse(ellipse, radgradbrush);
+		radgradbrush->Release();
 	}
 };
 class MainGame {
@@ -60,9 +110,20 @@ public:
 			delete d2d; d2d = nullptr;
 		}
 	}
+	
 	void Render() {
 		d2d->Begin();
-		d2d->Clear(1.f,0.5f,1.f);
+		d2d->Clear(0.f,0.f,0.f);
+		
+		d2d->DrawSquare(RectF(300.f, 100.f, 450.f, 200.f), 0.f, 0.7, 0.2f);
+		D2D1_GRADIENT_STOP gradstop[2];
+		gradstop[0].color = ColorF(ColorF::ForestGreen, 1.f);
+		gradstop[0].position = 1.f;
+		gradstop[1].color = ColorF(ColorF::White, 1.f);
+		gradstop[1].position = 0.f;
+		d2d->DrawGradSquare(RectF(0.f, 0.f, 200.f, 200.f), gradstop);
+		d2d->DrawCircle(Ellipse(Point2F(300.f, 200.f), 75.f, 50.f),1.f,0.5f,0.5f);
+		d2d->DrawGradCircle(Ellipse(Point2F(100.f, 150.f), 75.f, 50.f), gradstop);
 		d2d->End();
 	}
 };
@@ -80,6 +141,17 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT iMessage, WPARAM wParam, LPARAM lParam)
 		HDC hdc = BeginPaint(hwnd, &ps);
 		game->Render();
 		EndPaint(hwnd,&ps);
+	}
+		break;
+	case WM_LBUTTONDOWN:
+		InvalidateRect(hwnd, 0, true);
+		break;
+	case WM_MOUSEMOVE:
+	{
+		HDC hdc=GetDC(hwnd);
+		::Ellipse(hdc, 0, 0, 100, 100);
+		//game->Render();
+		ReleaseDC(hwnd, hdc);
 	}
 		break;
 	case WM_DESTROY:
