@@ -12,7 +12,7 @@ enum {
 	Menu_Exit, ID_Scroll, DrawType_Polygon,
 };
 enum {
-	DID_ColorCheck = 3, DID_ScrollLine = 4,DID_ComboLine,
+	DID_ColorCheck = 3, DID_ScrollLine = 4,DID_ComboLine,DID_BtnSet
 };
 enum {
 	Drag_None = 0, Drag_Draw = 1, Drag_Move, Drag_Size
@@ -180,7 +180,10 @@ struct ShapeList {
 						if (iscircle)return d;
 					}
 				}
-				else if (PtInRect(&d->rt, pt)) return d;
+				else {
+					AdjustRect(&d->rt); if (PtInRect(&d->rt, pt)) return d;
+
+				}
 			}
 		}
 		return 0;
@@ -298,7 +301,7 @@ private:
 	POINT point[10];
 	UCHAR point_idx;
 	HBITMAP hBuffer;
-	inline void DrawOneTrack(HDC hdc, USHORT x, USHORT y) {
+	inline void DrawOneTrack(HDC hdc, long x, long y) {
 		Rectangle(hdc, x - 5, y - 5, x + 5, y + 5);
 	}
 	void GetTracker(UCHAR tracknum, RECT* rt) {
@@ -318,7 +321,7 @@ private:
 		}
 		SetRect(rt, x - 5, y - 5, x + 5, y + 5);
 	}
-	int TrackerHit(USHORT x, USHORT y) {
+	int TrackerHit(long x, long y) {
 		POINT pt;
 		pt.x = x;
 		pt.y = y;
@@ -326,7 +329,7 @@ private:
 		RECT trackrt;
 		if (shapenum->type == DrawType_Polygon) {
 			{
-				USHORT tx, ty;
+				long tx, ty;
 				for(int i=0;i<shapenum->point_len;i++){
 					tx = shapenum->point[i].x;
 					ty = shapenum->point[i].y;
@@ -487,7 +490,7 @@ public:
 
 	void Set_ShapeColor(bool isline = false) {
 		if (ChooseColor(&col)) {
-			if (drawtype == DrawType_None && shapenum) {
+			if (shapenum) {
 				if (!isline)shapenum->planecolor = col.rgbResult;
 				else shapenum->linecolor = col.rgbResult;
 				InvalidateRect(api_hwnd, 0, true);
@@ -500,7 +503,7 @@ public:
 	}
 	void Set_AlphaCheck(bool isshow) {
 
-		if (drawtype == DrawType_None && shapenum) {
+		if (shapenum) {
 			shapenum->show = isshow;
 			InvalidateRect(api_hwnd, 0, true);
 		}
@@ -522,7 +525,7 @@ public:
 		return 12;
 	};
 	void Set_BrushType(UCHAR i) {
-		if (drawtype == DrawType_None && shapenum) {
+		if (shapenum) {
 			shapenum->brushtype = i;
 			InvalidateRect(api_hwnd, 0, true);
 		}
@@ -531,7 +534,31 @@ public:
 		}
 	}
 	~APIClass() { delete shapelist; }
+	void SetDialogControl() {
 
+		if (shapenum) {
+			dlg_scroll.Set(shapenum->thick);
+			dlg_check.Set(shapenum->show);
+			dlg_scroll_line.Set(shapenum->linetype);
+			dlg_combo.SetIndex(shapenum->brushtype);
+			wchar_t str[128];
+			wsprintf(str, L"도형 속성 - 선택 %d",shapenum-shapelist->data);
+			SetWindowText(dialog_hwnd, str);
+		}
+
+		else {
+			dlg_scroll.Set(shapelist->tempshape.thick);
+			dlg_check.Set(shapelist->tempshape.show);
+			dlg_scroll_line.Set(shapelist->tempshape.linetype);
+			dlg_combo.SetIndex(shapelist->tempshape.brushtype);
+			SetWindowText(dialog_hwnd, L"도형 속성");
+			
+
+		
+		}
+		if (dlg_check.ischeck)EnableWindow(dlg_combo.hcombo, true);
+		else EnableWindow(dlg_combo.hcombo, false);
+	}
 
 };
 void APIClass::LButtonDown(USHORT x, USHORT y) {
@@ -558,7 +585,7 @@ void APIClass::LButtonDown(USHORT x, USHORT y) {
 			isDrag = 0;
 		}
 		InvalidateRect(api_hwnd, 0, true);
-		UpdateWindow(api_hwnd);
+		//UpdateWindow(api_hwnd);
 	}
 	else {
 		mx = x; my = y;
@@ -571,29 +598,8 @@ void APIClass::LButtonDown(USHORT x, USHORT y) {
 		oldx = x; oldy = y;
 		isDrag = Drag_Draw;
 	}
-END: {
-	if (shapenum) {
-		dlg_scroll.Set(shapenum->thick);
-		dlg_check.Set(shapenum->show);
-		dlg_scroll_line.Set(shapenum->linetype);
-		dlg_combo.SetIndex(shapenum->brushtype);
-
-	}
-
-	else {
-		dlg_scroll.Set(shapelist->tempshape.thick);
-		dlg_check.Set(shapelist->tempshape.show);
-		dlg_scroll_line.Set(shapelist->tempshape.linetype);
-		dlg_combo.SetIndex(shapelist->tempshape.brushtype);
-
-		wchar_t str[128];
-		wsprintf(str, L"combo idx: %d \n", shapelist->tempshape.brushtype);
-		OutputDebugString(str);
-	}
-	if (dlg_check.ischeck)EnableWindow(dlg_combo.hcombo, true);
-	else EnableWindow(dlg_combo.hcombo, false);
-
-	}
+END: 
+	SetDialogControl();
 //SetCapture(api_hwnd);
 }
 
@@ -728,7 +734,7 @@ void APIClass::Paint(HWND hwnd) {
 	RECT bitrt;
 	HDC hmemdc;
 	HBITMAP holdbit;
-	hmemdc = CreateCompatibleDC(hdc);
+	hmemdc = CreateCompatibleDC(hdc); SetGraphicsMode(hmemdc, GM_ADVANCED);
 	GetClientRect(hwnd, &bitrt);
 	if (hBuffer == 0)
 		hBuffer = CreateCompatibleBitmap(hdc,
@@ -772,14 +778,32 @@ void APIClass::Paint(HWND hwnd) {
 		if (d->show)DeleteObject(hbrush);
 	}
 	if (shapenum)DrawTracker(hmemdc);
-	//
+	
 	if (drawtype == DrawType_Polygon)
 	{
 		Polygon(hmemdc, point, point_idx);
 	}
+	{
+		//SetGraphicsMode(hmemdc, GM_ADVANCED);
+		XFORM xForm;
+		xForm.eM11 = (FLOAT)1.0;
+		xForm.eM12 = (FLOAT)0.0;
+		xForm.eM21 = (FLOAT)0;
+		xForm.eM22 = (FLOAT)1.0;
+		xForm.eDx = (FLOAT)75.0;
+		xForm.eDy = (FLOAT)0.0;
+		//SetWorldTransform(hDC, &xForm);
+		//SetMapMode(hmemdc, MM_LOENGLISH);
+		//SetGraphicsMode(hdc, GM_ADVANCED);
+		SetWorldTransform(hmemdc, &xForm);
+		Rectangle(hmemdc, 0, 0, 300, 300);
+		xForm = { 0 };
+		//SetWorldTransform(hmemdc, &xForm);
+	}
 	BitBlt(hdc, 0, 0, bitrt.right, bitrt.bottom, hmemdc, 0, 0, SRCCOPY);
 	SelectObject(hmemdc, holdbit);
 	DeleteDC(hmemdc);
+	
 	EndPaint(hwnd, &ps);
 }
 void APIClass::Command(USHORT type, WPARAM wp) {
@@ -899,10 +923,13 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		dlg_scroll.Create(hwnd, api->g_hin, ID_Scroll, 10, 10, 10, 100);
 		CreateWindowW(L"button", L"선 색상",
 			WS_VISIBLE | WS_CHILD,
-			100, 50, 80, 25, hwnd, (HMENU)1, NULL, NULL);
+			180, 50, 80, 25, hwnd, (HMENU)1, NULL, NULL);
 		CreateWindowW(L"button", L"내부 색상",
 			WS_VISIBLE | WS_CHILD,
-			100, 80, 80, 25, hwnd, (HMENU)2, NULL, NULL);
+			180, 80, 80, 25, hwnd, (HMENU)2, NULL, NULL);
+		CreateWindowW(L"button", L"설정 복사",
+			WS_VISIBLE | WS_CHILD,
+			180, 110, 80, 25, hwnd, (HMENU)DID_BtnSet, NULL, NULL);
 		dlg_scroll_line.Create(hwnd, api->g_hin, DID_ScrollLine, 10, 30, 7, 100);
 		dlg_check.Create(hwnd, DID_ColorCheck, L"색상 채우기",true);
 		dlg_combo.Create(hwnd, 100, 20, DID_ComboLine);
@@ -913,6 +940,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		dlg_combo.Add(L"줄무니 ↘");
 		dlg_combo.Add(L"수평선");
 		dlg_combo.Add(L"수직선");
+		api->SetDialogControl();
 		break;
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
@@ -924,6 +952,9 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (dlg_check.ischeck)EnableWindow(dlg_combo.hcombo, true);
 			else EnableWindow(dlg_combo.hcombo, false);
 
+;			break;
+		case DID_BtnSet:
+			if (api->shapenum)api->shapelist->tempshape = *api->shapenum;
 			break;
 		case DID_ComboLine:
 			api->Set_BrushType(dlg_combo.GetIndex());
@@ -995,11 +1026,11 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 	win.hCursor = LoadCursor(0, IDC_ARROW);
 	win.hInstance = hin;
 	win.lpfnWndProc = WndProc;
-	win.lpszClassName = L"unjy";
+	win.lpszClassName = L"WINDRAW";
 	win.style = CS_HREDRAW | CS_VREDRAW;
 	RegisterClass(&win);
 
-	hwnd = CreateWindow(L"unjy", L"unjy", WS_OVERLAPPEDWINDOW | WS_VSCROLL,
+	hwnd = CreateWindow(L"WINDRAW", L"WINDRAW", WS_OVERLAPPEDWINDOW | WS_VSCROLL,
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
 		0, (HMENU)0, hin, 0);
 	ShowWindow(hwnd, 1);
@@ -1026,4 +1057,5 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 /*
 
 https://stpetrus27.wordpress.com/2018/06/04/vc-vc-dialog-without-the-resource-file/
+23/11/16 19:17
 */
