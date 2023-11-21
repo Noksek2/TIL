@@ -1066,9 +1066,12 @@ void APIClass::RButtonUp(USHORT x, USHORT y) {
 	}
 }
 APIClass* api;
+HFONT hfont=0;
 LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 	case WM_CREATE:
+		if(hfont==0)hfont = CreateFont(22, 0, 0, 0, 0, 0, 0, 0, HANGEUL_CHARSET,
+			0, 0, 0, 0, L"맑은 고딕");
 		CreateWindowW(L"button", L"선 색상",
 			WS_VISIBLE | WS_CHILD,
 			180, 80, 80, 25, hwnd, (HMENU)1, NULL, NULL);
@@ -1107,7 +1110,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		CreateWindow(L"static", L"알파값", WS_CHILD | WS_VISIBLE,
 			10, 50, 80, 25, hwnd, (HMENU)-1, 0, NULL);
 
-		hwnd_static[0]=CreateWindow(L"static", L"십", WS_CHILD | WS_VISIBLE,
+		hwnd_static[0]=CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
 			190, 10, 80, 25, hwnd, (HMENU)-1, 0, NULL);
 		hwnd_static[1] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
 			190, 30, 80, 25, hwnd, (HMENU)-1, 0, NULL);
@@ -1141,6 +1144,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		dlg_combo_grad.Add(L"↓");
 
 		api->SetDialogControl();
+		SendMessage(hwnd_static[0], WM_SETFONT, (WPARAM)hfont, MAKELPARAM(1, 0));
 		break;
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
@@ -1163,6 +1167,21 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		}
 		//DestroyWindow(hwnd);
 		break;
+	case WM_DRAWITEM:
+	{
+		HBRUSH hbrush;
+		auto lpdraw=(LPDRAWITEMSTRUCT)lParam;
+		if (lpdraw->itemState & ODS_SELECTED) {
+			hbrush = CreateSolidBrush(RGB(100, 100, 100));
+		}
+		else hbrush = CreateSolidBrush(RGB(255,255,255));
+		FillRect(lpdraw->hDC, &lpdraw->rcItem, hbrush);
+		if (lpdraw->itemState & ODS_FOCUS) {
+			DrawFocusRect(lpdraw->hDC, &lpdraw->rcItem);
+		}
+		DeleteObject(hbrush);
+
+	}
 	case WM_HSCROLL:
 		api->Set_ScrollData(dlg_scroll, 
 			&api->GetNowShape()->thick, api->GetNowShape(), wParam, lParam);
@@ -1170,6 +1189,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			&api->GetNowShape()->alpha, api->GetNowShape(), wParam, lParam);
 		api->Set_ScrollData(dlg_scroll_line, 
 			&api->GetNowShape()->linetype, api->GetNowShape(), wParam, lParam);		break;
+	
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps;
@@ -1196,6 +1216,9 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	}
 	break;
 	case WM_CLOSE:
+		if (hfont) {
+			DeleteObject(hfont);hfont = 0;
+		}
 		DestroyWindow(hwnd);
 		break;
 	}
@@ -1270,6 +1293,7 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 #ifdef RESOURCE
 	}
 #endif
+	
 	delete api;
 	GdiplusShutdown(gdiptr);
 	return 0;
