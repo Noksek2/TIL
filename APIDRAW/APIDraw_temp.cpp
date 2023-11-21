@@ -24,7 +24,8 @@ enum {
 };
 enum {
 	DID_ColorCheck = 3, DID_ScrollLine = 4, DID_ComboLine, DID_BtnSet,
-	DID_ScrollAlpha,DID_BtnPlane2,DID_RadioPlane,DID_RadioHatch,DID_RadioGrad
+	DID_ScrollAlpha,DID_BtnPlane2,DID_RadioPlane,DID_RadioHatch,DID_RadioGrad,
+	DID_ComboGrad,
 };
 enum {
 	Drag_None = 0, Drag_Draw = 1, Drag_Move, Drag_Size
@@ -346,9 +347,9 @@ public:
 };
 CScroll dlg_scroll,dlg_scroll_line,dlg_scroll_alpha;
 CCheckBox dlg_check;
-CComboBox dlg_combo;
+CComboBox dlg_combo,dlg_combo_grad;
 CRadioButton dlg_radio[3];
-HWND hwnd_plane2;
+HWND hwnd_plane2,hwnd_plane;
 class APIClass {
 private:
 	USHORT mx, my, oldx, oldy;
@@ -586,17 +587,19 @@ public:
 	}
 	void Set_RadioPlaneEnable(USHORT type) {
 		if (type == DrawType_Line) {
-			dlg_radio[0].Set(false);
+			dlg_radio[0].Set(true);
 			dlg_radio[1].Set(false);
 			dlg_radio[2].Set(false);
 			EnableWindow(dlg_radio[0].hcheck, false);
 			EnableWindow(dlg_radio[1].hcheck, false);
 			EnableWindow(dlg_radio[2].hcheck, false);
+			EnableWindow(hwnd_plane,false);
 		}
 		else {
 			EnableWindow(dlg_radio[0].hcheck, true);
 			EnableWindow(dlg_radio[1].hcheck, true);
 			EnableWindow(dlg_radio[2].hcheck, true);
+			EnableWindow(hwnd_plane, true);
 		}
 	}
 	void Set_DialogEnable() {
@@ -1106,7 +1109,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		CreateWindowW(L"button", L"선 색상",
 			WS_VISIBLE | WS_CHILD,
 			180, 50, 80, 25, hwnd, (HMENU)1, NULL, NULL);
-		CreateWindowW(L"button", L"내부 색상",
+		hwnd_plane=CreateWindowW(L"button", L"내부 색상",
 			WS_VISIBLE | WS_CHILD,
 			180, 80, 80, 25, hwnd, (HMENU)2, NULL, NULL);
 		hwnd_plane2=CreateWindowW(L"button", L"내부 색상2",
@@ -1143,6 +1146,8 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		dlg_combo.Add(L"줄무니 ↘");
 		dlg_combo.Add(L"수평선");
 		dlg_combo.Add(L"수직선");
+
+		dlg_combo_grad.Create(hwnd, 0, 0, DID_ComboGrad);
 		api->SetDialogControl();
 		break;
 	case WM_COMMAND:
@@ -1158,13 +1163,11 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		case DID_BtnSet:
 			if (api->shapenum)api->shapelist->tempshape = *api->shapenum;
 			break;
-		case DID_ComboLine:
-			api->Set_BrushType(dlg_combo.GetIndex());
+		case DID_ComboLine:api->Set_BrushType(dlg_combo.GetIndex());break;
+		case DID_ComboGrad:
+
 			break;
-		case DID_BtnPlane2:
-			api->Set_PlaneColor2();
-			
-			break;
+		case DID_BtnPlane2:api->Set_PlaneColor2();break;
 		
 		case DID_RadioPlane:api->Set_RadioBrush(0);break;
 		case DID_RadioHatch:api->Set_RadioBrush(1); break;
