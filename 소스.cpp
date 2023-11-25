@@ -524,7 +524,7 @@ public:
 			ScreenToClient(api_hwnd, &pt);
 			hit = TrackerHit(pt.x, pt.y);
 			if (hit) {
-				SetWindowText(api_hwnd, L"¼±ÅÃ");
+				SetWindowText(api_hwnd, L"ì„ íƒ");
 				SetCursor(LoadCursor(0, TrackCursor[hit]));
 				return true;
 			}
@@ -665,13 +665,13 @@ public:
 		Set_StaticText(shape);
 
 		if (shapenum) {
-			wsprintf(str, L"µµÇü ¼Ó¼º - ¼±ÅÃ %d", shapenum - shapelist->data);
+			wsprintf(str, L"ë„í˜• ì†ì„± - ì„ íƒ %d", shapenum - shapelist->data);
 			SetWindowText(dialog_hwnd, str);
 			Set_RadioPlaneEnable(shapenum->type != DrawType_Line);
 		}
 
 		else {
-			SetWindowText(dialog_hwnd, L"µµÇü ¼Ó¼º");
+			SetWindowText(dialog_hwnd, L"ë„í˜• ì†ì„±");
 			Set_RadioPlaneEnable(drawtype != DrawType_Line);
 		}
 		Set_DialogEnable();
@@ -1101,7 +1101,7 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 			RegisterClassExW(&wc);
 
 			dialog_hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME,//| WS_EX_TOPMOST,
-				L"DialogClass", L"µµÇü ¼Ó¼º",
+				L"DialogClass", L"ë„í˜• ì†ì„±",
 				WS_VISIBLE | WS_SYSMENU | WS_CAPTION, 100, 100, 400, 300,
 				api_hwnd, 0, g_hin, NULL);
 			this->col.hwndOwner = dialog_hwnd;
@@ -1136,24 +1136,24 @@ void APIClass::RButtonUp(long x, long y) {
 		hpop = CreatePopupMenu();
 		hsubmenu = CreatePopupMenu();
 		ClientToScreen(api_hwnd, &point);
-		AppendMenu(hpop, MF_STRING, DrawType_None, L"¼±ÅÃ");
-		AppendMenu(hpop, MF_STRING, DrawType_Circle, L"¿ø");
-		AppendMenu(hpop, MF_STRING, DrawType_Square, L"»ç°¢Çü");
-		AppendMenu(hpop, MF_STRING, DrawType_Line, L"Á÷¼±");
-		AppendMenu(hpop, MF_STRING, DrawType_Polygon, L"´Ù°¢Çü");
+		AppendMenu(hpop, MF_STRING, DrawType_None, L"ì„ íƒ");
+		AppendMenu(hpop, MF_STRING, DrawType_Circle, L"ì›");
+		AppendMenu(hpop, MF_STRING, DrawType_Square, L"ì‚¬ê°í˜•");
+		AppendMenu(hpop, MF_STRING, DrawType_Line, L"ì§ì„ ");
+		AppendMenu(hpop, MF_STRING, DrawType_Polygon, L"ë‹¤ê°í˜•");
 		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
 
-		AppendMenu(hpop, MF_STRING | MF_POPUP, (UINT_PTR)hsubmenu, L"Á¤·Ä/»èÁ¦");
-		AppendMenu(hsubmenu, MF_STRING, Menu_Forward, L"¾ÕÀ¸·Î ÀÌµ¿");
-		AppendMenu(hsubmenu, MF_STRING, Menu_FarForward, L"¸Ç ¾ÕÀ¸·Î ÀÌµ¿");
-		AppendMenu(hsubmenu, MF_STRING, Menu_Backward, L"µÚ·Î ÀÌµ¿");
-		AppendMenu(hsubmenu, MF_STRING, Menu_FarBack, L"¸Ç µÚ·Î ÀÌµ¿");
+		AppendMenu(hpop, MF_STRING | MF_POPUP, (UINT_PTR)hsubmenu, L"ì •ë ¬/ì‚­ì œ");
+		AppendMenu(hsubmenu, MF_STRING, Menu_Forward, L"ì•ìœ¼ë¡œ ì´ë™");
+		AppendMenu(hsubmenu, MF_STRING, Menu_FarForward, L"ë§¨ ì•ìœ¼ë¡œ ì´ë™");
+		AppendMenu(hsubmenu, MF_STRING, Menu_Backward, L"ë’¤ë¡œ ì´ë™");
+		AppendMenu(hsubmenu, MF_STRING, Menu_FarBack, L"ë§¨ ë’¤ë¡œ ì´ë™");
 		AppendMenu(hsubmenu, MF_SEPARATOR, 0, 0);
-		AppendMenu(hsubmenu, MF_STRING, Menu_Delete, L"¼±ÅÃÇÑ µµÇü »èÁ¦\tDel");
-		AppendMenu(hsubmenu, MF_STRING, Menu_Clear, L"ÀüÃ¼ »èÁ¦\tCtrl+Del");
+		AppendMenu(hsubmenu, MF_STRING, Menu_Delete, L"ì„ íƒí•œ ë„í˜• ì‚­ì œ\tDel");
+		AppendMenu(hsubmenu, MF_STRING, Menu_Clear, L"ì „ì²´ ì‚­ì œ\tCtrl+Del");
 
 		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
-		AppendMenu(hpop, MF_STRING, Menu_Prop, L"µµÇü ¼Ó¼º");
+		AppendMenu(hpop, MF_STRING, Menu_Prop, L"ë„í˜• ì†ì„±");
 		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
 		AppendMenu(hpop, MF_STRING, Menu_Exit, L"QUIT");
 		CheckMenuItem(hpop, drawtype, MF_BYCOMMAND | MF_CHECKED);
@@ -1168,52 +1168,52 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 	case WM_CREATE:
 		/*if (hfont == 0)hfont = CreateFont(22, 0, 0, 0, 0, 0, 0, 0, HANGEUL_CHARSET,
-			0, 0, 0, 0, L"¸¼Àº °íµñ");*/
+			0, 0, 0, 0, L"ë§‘ì€ ê³ ë”•");*/
 	{
-		CreateWindow(L"button", L"»ö»ó ¼³Á¤",
+		CreateWindow(L"button", L"ìƒ‰ìƒ ì„¤ì •",
 			WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
 			140, 80, 130, 150, hwnd, (HMENU)0, 0, 0);
 
 		USHORT y= 100;
-		CreateWindowW(L"button", L"¼± »ö»ó",
+		CreateWindowW(L"button", L"ì„  ìƒ‰ìƒ",
 			WS_VISIBLE | WS_CHILD,
 			180, y, 80, 25, hwnd, (HMENU)1, NULL, NULL);
 		y += 30;
-		hwnd_plane = CreateWindowW(L"button", L"³»ºÎ »ö»ó",
+		hwnd_plane = CreateWindowW(L"button", L"ë‚´ë¶€ ìƒ‰ìƒ",
 			WS_VISIBLE | WS_CHILD,
 			180, y, 80, 25, hwnd, (HMENU)2, NULL, NULL);
 		y += 30;
-		hwnd_plane2 = CreateWindowW(L"button", L"³»ºÎ »ö»ó2",
+		hwnd_plane2 = CreateWindowW(L"button", L"ë‚´ë¶€ ìƒ‰ìƒ2",
 			WS_VISIBLE | WS_CHILD,
 			180, y, 80, 25, hwnd, (HMENU)DID_BtnPlane2, NULL, NULL);
 		y += 30;
-		CreateWindowW(L"button", L"¼³Á¤ º¹»ç",
+		CreateWindowW(L"button", L"ì„¤ì • ë³µì‚¬",
 			WS_VISIBLE | WS_CHILD,
 			180, y, 80, 25, hwnd, (HMENU)DID_BtnSet, NULL, NULL);
 	}
-		CreateWindow(L"button", L"Ã¤¿ì±â ¸ğµå",
+		CreateWindow(L"button", L"ì±„ìš°ê¸° ëª¨ë“œ",
 			WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
 			5, 80, 120, 125, hwnd, (HMENU)0, 0, 0);
 
-		dlg_radio[0].hcheck = CreateWindow(L"button", L"»ö»ó ¾øÀ½", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
+		dlg_radio[0].hcheck = CreateWindow(L"button", L"ìƒ‰ìƒ ì—†ìŒ", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
 			| WS_GROUP,
 			15, 100, 100, 20, hwnd, (HMENU)DID_RadioNoBrush, 0, 0);
 
-		dlg_radio[1].hcheck = CreateWindow(L"button", L"ÀÏ¹İ", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
+		dlg_radio[1].hcheck = CreateWindow(L"button", L"ì¼ë°˜", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
 			15, 125, 100, 20, hwnd, (HMENU)DID_RadioPlane, 0, 0);
 		dlg_radio[1].ischeck = true;
-		dlg_radio[2].hcheck = CreateWindow(L"button", L"ÇØÄ¡", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
+		dlg_radio[2].hcheck = CreateWindow(L"button", L"í•´ì¹˜", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
 			, 15, 150, 100, 20, hwnd, (HMENU)DID_RadioHatch, 0, 0);
-		dlg_radio[3].hcheck = CreateWindow(L"button", L"±×¶óµ¥ÀÌ¼Ç", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
+		dlg_radio[3].hcheck = CreateWindow(L"button", L"ê·¸ë¼ë°ì´ì…˜", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
 			, 15, 175, 100, 20, hwnd, (HMENU)DID_RadioGrad, 0, 0);
 		CheckRadioButton(hwnd, DID_RadioNoBrush, DID_RadioGrad, DID_RadioPlane);
 
 
-		CreateWindow(L"static", L"¼± µÎ²²", WS_CHILD | WS_VISIBLE,
+		CreateWindow(L"static", L"ì„  ë‘ê»˜", WS_CHILD | WS_VISIBLE,
 			10, 10, 80, 25, hwnd, (HMENU)-1, 0, NULL);
-		CreateWindow(L"static", L"¼± Å¸ÀÔ", WS_CHILD | WS_VISIBLE,
+		CreateWindow(L"static", L"ì„  íƒ€ì…", WS_CHILD | WS_VISIBLE,
 			10, 30, 80, 25, hwnd, (HMENU)-1, 0, NULL);
-		CreateWindow(L"static", L"¾ËÆÄ°ª", WS_CHILD | WS_VISIBLE,
+		CreateWindow(L"static", L"ì•ŒíŒŒê°’", WS_CHILD | WS_VISIBLE,
 			10, 50, 80, 25, hwnd, (HMENU)-1, 0, NULL);
 
 		hwnd_static[0] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
@@ -1233,13 +1233,13 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		dlg_combo_grad.Create(hwnd, 230, 50, DID_ComboGrad);
 
 
-		/*dlg_combo.Add(L"ÀÏ¹İ");
-		dlg_combo.Add(L"ÁÙ¹«´Ï ¢×");
-		dlg_combo.Add(L"¹ÙµÏÆÇ");
-		dlg_combo.Add(L"ÁÙ¹«´Ï ¡Ø");
-		dlg_combo.Add(L"ÁÙ¹«´Ï ¢Ù");
-		dlg_combo.Add(L"¼öÆò¼±");
-		dlg_combo.Add(L"¼öÁ÷¼±");*/
+		/*dlg_combo.Add(L"ì¼ë°˜");
+		dlg_combo.Add(L"ì¤„ë¬´ë‹ˆ â†™");
+		dlg_combo.Add(L"ë°”ë‘‘íŒ");
+		dlg_combo.Add(L"ì¤„ë¬´ë‹ˆ â€»");
+		dlg_combo.Add(L"ì¤„ë¬´ë‹ˆ â†˜");
+		dlg_combo.Add(L"ìˆ˜í‰ì„ ");
+		dlg_combo.Add(L"ìˆ˜ì§ì„ ");*/
 		{
 		}
 		for (int i = 0; i < HatchStyleMax; i++) {
@@ -1250,10 +1250,10 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			}
 		}
 
-		dlg_combo_grad.Add(L"¡æ");
-		dlg_combo_grad.Add(L"¡ç");
-		dlg_combo_grad.Add(L"¡è");
-		dlg_combo_grad.Add(L"¡é");
+		dlg_combo_grad.Add(L"â†’");
+		dlg_combo_grad.Add(L"â†");
+		dlg_combo_grad.Add(L"â†‘");
+		dlg_combo_grad.Add(L"â†“");
 
 		api->SetDialogControl();
 		//SendMessage(hwnd_static[0], WM_SETFONT, (WPARAM)hfont, MAKELPARAM(1, 0));
@@ -1382,7 +1382,7 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 	ULONG_PTR gdiptr;
 	GdiplusStartupInput gdistart;
 	if (GdiplusStartup(&gdiptr, &gdistart, 0) != Gdiplus::Ok) {
-		MessageBox(0, L"GDIPLUS ½ÇÆĞ", L"jotdi", MB_ICONERROR);
+		MessageBox(0, L"GDIPLUS ì‹¤íŒ¨", L"jotdi", MB_ICONERROR);
 		return 0;
 	}
 	hwnd = CreateWindow(L"WINDRAW", L"WINDRAW", WS_OVERLAPPEDWINDOW | WS_VSCROLL,
