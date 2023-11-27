@@ -20,7 +20,8 @@ enum {
 	DrawType_None, DrawType_Circle, DrawType_Square, DrawType_Line,
 	Menu_Delete, Menu_Clear, Menu_Prop,
 	Menu_Forward, Menu_FarForward, Menu_Backward, Menu_FarBack,
-	Menu_Exit, ID_Scroll, DrawType_Polygon,
+	Menu_Exit, ID_Scroll, DrawType_Polygon,DrawType_Text,
+	DrawType_Bitmap
 };
 enum {
 	DID_ScrollLine = 4, DID_ComboLine, DID_BtnSet,
@@ -37,12 +38,22 @@ inline int LP_GetMouseX(LPARAM lp) { return LOWORD(lp); }
 inline int LP_GetMouseY(LPARAM lp) { return HIWORD(lp); }
 
 LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
+struct ShapeText {
+	WCHAR fontface[32];
+	WCHAR *text;
+	USHORT fontsize,len;
+};
 struct ShapeList {
 	struct ShapeData {
 		RECT rt;
-		POINT* point;
-		USHORT type;
+		union {
+			struct {
+				POINT* point;
+				USHORT type;
+			};
+			ShapeText* t;
+			BYTE* image;
+		};
 		COLORREF linecolor;
 		COLORREF planecolor;
 		COLORREF planecolor2;
@@ -85,15 +96,34 @@ struct ShapeList {
 		OutputDebugString(str);
 		len++;
 	}
+	void setPolyOffset(ShapeData* sh,long x,long y) {
+		for (auto d = sh->point; d < sh->point + sh->point_len; d++) {
+			d->x += x;
+			d->y += y;
+		}
+	}
 	void append_polygon(POINT* _point, UCHAR point_len) {
 		if (len >= capa)return;
-		data[len].type = DrawType_Polygon;
 		data[len] = tempshape;
+		RECT mrt;
+		SetRect(&mrt, _point->x,_point->y, _point->x,_point->y);
+		for (auto d = _point; d < _point + point_len; d++) {
+			if (mrt.left > d->x)mrt.left = d->x;
+			else if (mrt.right < d->x)mrt.right = d->x;
+			if (mrt.top > d->y)mrt.top = d->y;
+			else if (mrt.bottom < d->y)mrt.bottom = d->y;
+
+		}
+		data[len].rt = mrt;
+		data[len].type = DrawType_Polygon;
+		
 		data[len].point = (POINT*)malloc(sizeof(POINT) * point_len);
 		data[len].point_len = point_len;
 		memcpy(data[len].point, _point, sizeof(POINT) * point_len);
 
-
+		wchar_t str[128];
+		wsprintf(str, L"append shape[%d] type:%d \n", len, DrawType_Polygon);
+		OutputDebugString(str);
 		len++;
 	}
 	ShapeData* forward_shape(ShapeData* d, bool isfar = false) {
@@ -164,7 +194,7 @@ struct ShapeList {
 			r->top = t;
 		}
 	}
-	ShapeData* find(USHORT x, USHORT y) {
+	ShapeData* find(long x, long y) {
 		POINT pt = { x,y };
 		RECT temprt;
 
@@ -185,6 +215,18 @@ struct ShapeList {
 						DeleteObject(hcircle);
 						if (iscircle)return d;
 					}
+				}
+				else if (d->type == DrawType_Polygon)
+				{
+					{
+						HRGN hpoly = CreatePolygonRgn(
+							d->point,d->point_len,WINDING
+						);
+						bool ispoly = PtInRegion(hpoly, x, y);
+						DeleteObject(hpoly);
+						if (ispoly)return d;
+					}
+					//ALTERNATE
 				}
 				else {
 					AdjustRect(&d->rt); if (PtInRect(&d->rt, pt)) return d;
@@ -272,8 +314,8 @@ public:
 	void Create(HWND hwnd, int x, int y, int id) {
 		hcombo = CreateWindow(
 			L"combobox", 0, WS_CHILD | WS_VISIBLE
-			| CBS_DROPDOWNLIST|CBS_AUTOHSCROLL|
-			 WS_VSCROLL 
+			| CBS_DROPDOWNLIST | CBS_AUTOHSCROLL |
+			WS_VSCROLL
 			, x, y, 100, 500, hwnd, (HMENU)id, 0, 0
 		);
 	}
@@ -342,14 +384,17 @@ CRadioButton dlg_radio[4];
 HWND hwnd_plane2, hwnd_plane, hwnd_static[3];
 class APIClass {
 private:
-	USHORT mx, my, oldx, oldy;
+	long mx, my, oldx, oldy;
 	CHOOSECOLOR col;
 	COLORREF coltemp[16];
 	POINT point[10];
 	UCHAR point_idx;
 	HBITMAP hBuffer;
 	inline void DrawOneTrack(HDC hdc, long x, long y) {
-		Rectangle(hdc, x - 5, y - 5, x + 5, y + 5);
+		Rectangle(hdc, x - 4, y - 4, x + 4, y + 4);
+	}
+	inline void DrawPointTrack(HDC hdc, long x, long y) {
+		Ellipse(hdc, x - 4, y - 4, x + 4, y + 4);
 	}
 	void GetTracker(UCHAR tracknum, RECT* rt) {
 		RECT* srt = &shapenum->rt;
@@ -368,25 +413,29 @@ private:
 		}
 		SetRect(rt, x - 5, y - 5, x + 5, y + 5);
 	}
+	void AdjustToGrid(long& x, long& y) {
+		x = x / gridw * gridw;
+		y = y / gridw * gridw;
+	}
 	int TrackerHit(long x, long y) {
 		POINT pt;
 		pt.x = x;
 		pt.y = y;
 		if (!shapenum)return 0;
 		RECT trackrt;
-		if (shapenum->type == DrawType_Polygon) {
+		/*if (shapenum->type == DrawType_Polygon) {
 			{
 				long tx, ty;
-				for (int i = 0;i < shapenum->point_len;i++) {
+				for (int i = 0; i < shapenum->point_len; i++) {
 					tx = shapenum->point[i].x;
 					ty = shapenum->point[i].y;
-					SetRect(&trackrt, tx - 5, ty - 5, tx + 5, ty + 5);
+					SetRect(&trackrt, tx - 4, ty - 4, tx + 4, ty + 4);
 					if (PtInRect(&trackrt, pt))return i;
 				}
 			}
 			return 0;
 		}
-		else if (shapenum->type == DrawType_Line)
+		else */if (shapenum->type == DrawType_Line)
 		{
 			GetTracker(1, &trackrt);
 			if (PtInRect(&trackrt, pt))return 1;
@@ -422,7 +471,7 @@ private:
 			Rectangle(hdc, rt->left, rt->top, rt->right, rt->bottom);
 			break;
 		case DrawType_Polygon:
-			Polygon(hdc, point, point_idx);
+			Polygon(hdc, shapenum->point, shapenum->point_len);
 			break;
 		}
 		DeleteObject(SelectObject(hdc, oldpen));
@@ -431,15 +480,16 @@ private:
 	}
 	void DrawTracker(HDC hdc) {
 		RECT rt = shapenum->rt;
+
+		if (shapenum->type == DrawType_Polygon) {
+			for (int i = 0; i < shapenum->point_len; i++)
+				DrawPointTrack(hdc, shapenum->point[i].x, shapenum->point[i].y);
+		}
 		if (shapenum->type == DrawType_Line) {
 
 
 			DrawOneTrack(hdc, rt.left, rt.top);
 			DrawOneTrack(hdc, rt.right, rt.bottom);
-		}
-		else if (shapenum->type == DrawType_Polygon) {
-			for (int i = 0;i < shapenum->point_len;i++)
-				DrawOneTrack(hdc, shapenum->point[i].x, shapenum->point[i].y);
 		}
 		else {
 
@@ -466,10 +516,18 @@ public:
 	USHORT isDrag;
 	UCHAR tracknum;
 	USHORT drawtype;
+
+	int gridw;
+	bool isgrid;
+
+
 	ShapeList::ShapeData* GetTempShape() {
 		return &shapelist->tempshape;
 	}
 	APIClass(HINSTANCE hin) :g_hin(hin) {
+		gridw = 10;
+		isgrid = true;
+
 		point_idx = 0;
 		shapenum = 0;
 		shapelist = new ShapeList();
@@ -484,12 +542,13 @@ public:
 		hBuffer = 0;
 		api_hwnd = hwnd;
 		for (int i = 0; i < 16; i++)
-			coltemp[i] = RGB(255, 255, 255);
+			coltemp[i] = RGB(rand(),rand(),rand());
 	}
+	void KeyDown(WPARAM);
 	void Paint(HWND hwnd);
 	void Command(USHORT, WPARAM);
-	void MouseMove(USHORT, USHORT);
-	void LButtonDown(USHORT, USHORT);
+	void MouseMove(long, long);
+	void LButtonDown(long, long);
 	bool OnSetCursor() {
 		POINT pt;
 		int hit = tracknum;
@@ -527,7 +586,7 @@ public:
 			}
 		}
 	}
-	void RButtonUp(USHORT, USHORT);
+	void RButtonUp(long, long);
 	void Destroy() {
 		if (hBuffer) {
 			DeleteObject(hBuffer);
@@ -634,7 +693,8 @@ public:
 
 	}
 	void SetDialogControl() {
-		auto shape = shapenum?shapenum:GetTempShape();
+		if (!IsWindow(dialog_hwnd))return;
+		auto shape = shapenum ? shapenum : GetTempShape();
 		dlg_radio[0].Set(false);
 		dlg_radio[1].Set(false);
 		dlg_radio[2].Set(false);
@@ -647,7 +707,7 @@ public:
 		dlg_scroll_alpha.Set(shape->alpha);
 		dlg_radio[shape->brushmode].Set(true);
 		wchar_t str[128];
-		
+
 		Set_StaticText(shape);
 
 		if (shapenum) {
@@ -662,13 +722,13 @@ public:
 		}
 		Set_DialogEnable();
 	}
-	inline ShapeList::ShapeData* GetNowShape(){
+	inline ShapeList::ShapeData* GetNowShape() {
 		return (shapenum ? shapenum : GetTempShape());
 	}
-	void Set_ScrollData(CScroll& scroll, UCHAR* dt, ShapeList::ShapeData* shape,WPARAM wp, LPARAM lp) {
+	void Set_ScrollData(CScroll& scroll, UCHAR* dt, ShapeList::ShapeData* shape, WPARAM wp, LPARAM lp) {
 		if ((HWND)lp == scroll.hscroll) {
 			scroll.Process(wp, lp);
-			*dt = scroll.pos;
+			*dt = (UCHAR)scroll.pos;
 			Set_StaticText(shape);
 
 			InvalidateRect(api_hwnd, 0, true);
@@ -677,11 +737,88 @@ public:
 	~APIClass() { delete shapelist; }
 
 };
-void APIClass::LButtonDown(USHORT x, USHORT y) {
+void APIClass::KeyDown(WPARAM wp) {
+	bool isshift, isctrl;
+	isshift = (GetKeyState(VK_SHIFT) & 0x8000)!=0;
+	isctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+	long m = isctrl?1:gridw;
+
+	
+	if ((GetKeyState(VK_DELETE) & 0x8000)) {
+			SendMessage(api_hwnd, WM_COMMAND,isctrl?Menu_Clear:Menu_Delete, 0);
+			return;
+		}
+	bool action=false;
+
+	RECT trt;
+	if ((GetKeyState(VK_TAB) & 0x8000) != 0) {
+		shapenum = 
+			shapenum?
+			(shapenum+1<shapelist->data+shapelist->len?
+				shapenum+1:shapenum)
+			:shapelist->data;
+		SetDialogControl();
+		InvalidateRect(api_hwnd, 0, true);
+		return;
+	}
+	if (!shapenum)return;
+		if ((GetKeyState(VK_ESCAPE) & 0x8000) != 0) {
+			shapenum = 0;
+			SetDialogControl();
+			InvalidateRect(api_hwnd, 0, true);
+			return;
+		}
+		trt = shapenum->rt;
+		if (!isshift) {
+			if (wp == VK_LEFT) {
+				OffsetRect(&trt, -m, 0); action = true;
+				shapelist->setPolyOffset(shapenum, -m, 0);
+			}
+			else if (wp == VK_RIGHT) {
+				action = true; OffsetRect(&trt, +m, 0);
+				shapelist->setPolyOffset(shapenum, +m, 0);
+			}
+			if (wp == VK_UP) {
+				OffsetRect(&trt, 0, -m);
+				shapelist->setPolyOffset(shapenum, 0, -m);
+				action = true;
+			}
+			else if (wp == VK_DOWN) {
+				OffsetRect(&trt, 0, m);
+				shapelist->setPolyOffset(shapenum, 0, m);
+				action = true;
+			}
+		}
+		else {
+			if (wp == VK_LEFT) {
+				trt.right -= 10;
+				action = true;
+			}
+			else if (wp == VK_RIGHT) {
+				action = true; trt.right += 10;
+			}
+			if (wp == VK_UP) {
+				trt.bottom -= 10;
+				action = true;
+			}
+			else if (wp == VK_DOWN) {
+				trt.bottom += 10;
+				action = true;
+			}
+		}
+		if (action) {
+			shapenum->rt = trt;
+			InvalidateRect(api_hwnd, 0, true);
+		}
+
+}
+void APIClass::LButtonDown(long x, long y) {
+	long rx=x, ry=y;
+	AdjustToGrid(x, y);
 	ShapeList::ShapeData* FindData = 0;
 	if (drawtype == DrawType_None) {
 		if (shapenum) {
-			tracknum = TrackerHit(x, y);
+			tracknum = TrackerHit(rx, ry);
 			if (tracknum) {
 				isDrag = Drag_Size;
 				oldx = x;
@@ -689,8 +826,10 @@ void APIClass::LButtonDown(USHORT x, USHORT y) {
 				goto END;
 			}
 		}
-		FindData = shapelist->find(x, y);
+		
+		FindData = shapelist->find(rx, ry);
 		shapenum = FindData;
+
 		if (FindData) {
 			oldx = x;
 			oldy = y;
@@ -720,8 +859,9 @@ END:;
 	SetCapture(api_hwnd);
 }
 
-void APIClass::MouseMove(USHORT x, USHORT y) {
-	USHORT ex = x, ey = y;
+void APIClass::MouseMove(long x, long y) {
+	AdjustToGrid(x, y);
+	long ex = x, ey = y;
 	HDC hdc;
 	RECT* rt = &shapenum->rt;
 	switch (isDrag) {
@@ -751,6 +891,11 @@ void APIClass::MouseMove(USHORT x, USHORT y) {
 		/*SetRect(rt, rt->left + ex - oldx, rt->top + ex - oldx,
 			rt->right + ex - oldx, rt->bottom + ex - oldx);*/
 		DrawTemp();
+		
+		
+		if (shapenum->type == DrawType_Polygon) {
+			shapelist->setPolyOffset(shapenum,ex - oldx, ey - oldy);
+		}
 		OffsetRect(rt, ex - oldx, ey - oldy);
 		oldx = ex;
 		oldy = ey;
@@ -803,12 +948,15 @@ void APIClass::LButtonUp() {
 
 			}
 			else {
-				point[point_idx].x = oldx;
-				point[point_idx++].y = oldy;
-				if (point_idx == 9)goto ADD;
+				point[0].x = mx;
+				point[point_idx++].y = my;
 			}
+			point[point_idx].x = oldx;
+			point[point_idx++].y = oldy;
+			if (point_idx == 9)goto ADD;
+			
 			mx = oldx; my = oldy;
-			InvalidateRect(api_hwnd, 0, true);
+			//InvalidateRect(api_hwnd, 0, true);
 			return;
 		ADD:
 			shapelist->append_polygon(point, point_idx);
@@ -859,7 +1007,21 @@ void APIClass::Paint(HWND hwnd) {
 			bitrt.right, bitrt.bottom);
 	holdbit = (HBITMAP)SelectObject(hmemdc, hBuffer);
 	FillRect(hmemdc, &bitrt, GetSysColorBrush(COLOR_WINDOW));
-
+	HPEN oldpen;
+	if (isgrid) {
+		oldpen = (HPEN)SelectObject(hmemdc, 
+			CreatePen(PS_SOLID, 1, RGB(200, 200, 200))
+			);
+		for (int y = 0; y < bitrt.bottom; y += gridw) {
+			MoveToEx(hmemdc, 0, y, 0);
+			LineTo(hmemdc, bitrt.right, y);
+		}
+		for (int x = 0; x < bitrt.right; x += gridw) {
+			MoveToEx(hmemdc, x, 0, 0);
+			LineTo(hmemdc, x, bitrt.bottom);
+		}
+		DeleteObject(SelectObject(hmemdc, oldpen));
+	}
 	Graphics gp(hmemdc);
 	Color basiccol = Color(0, 255, 255, 255);
 	Pen gpen(basiccol);
@@ -921,15 +1083,23 @@ void APIClass::Paint(HWND hwnd) {
 						GetRValue(d->planecolor2),
 						GetGValue(d->planecolor2),
 						GetBValue(d->planecolor2)
-					),d->brushtype*90.0
+					), d->brushtype * 90.0f
 				);
-				
+
 			}
-			
+
 
 			switch (d->type) {
 			case DrawType_Polygon:
-				//Polygon(hmemdc, d->point, d->point_len);
+			{
+					Point p[10];
+					for (int i = 0; i < d->point_len; i++) {
+						p[i].X = d->point[i].x;
+						p[i].Y = d->point[i].y;
+					}
+					gp.DrawPolygon(&gpen, p, d->point_len);
+					gp.FillPolygon(allbrush, p, d->point_len);
+				}
 				break;
 			case DrawType_Circle:
 				gp.DrawEllipse(&gpen, grt);
@@ -968,6 +1138,10 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 		drawtype = type;
 		Set_RadioPlaneEnable(drawtype != DrawType_Line);
 		break;
+	case DrawType_Text:
+		break;
+	case DrawType_Bitmap:
+		break;
 	case Menu_FarForward:
 		if (drawtype == DrawType_None && shapenum) {
 			shapenum = shapelist->forward_shape(shapenum, true);
@@ -1005,7 +1179,7 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 
 			dialog_hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME,//| WS_EX_TOPMOST,
 				L"DialogClass", L"도형 속성",
-				WS_VISIBLE | WS_SYSMENU | WS_CAPTION, 100, 100, 350, 250,
+				WS_VISIBLE | WS_SYSMENU | WS_CAPTION, 100, 100, 400, 300,
 				api_hwnd, 0, g_hin, NULL);
 			this->col.hwndOwner = dialog_hwnd;
 		}
@@ -1029,7 +1203,7 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 		break;
 	}
 }
-void APIClass::RButtonUp(USHORT x, USHORT y) {
+void APIClass::RButtonUp(long x, long y) {
 
 	HMENU hpop;
 	HMENU hsubmenu;
@@ -1044,6 +1218,8 @@ void APIClass::RButtonUp(USHORT x, USHORT y) {
 		AppendMenu(hpop, MF_STRING, DrawType_Square, L"사각형");
 		AppendMenu(hpop, MF_STRING, DrawType_Line, L"직선");
 		AppendMenu(hpop, MF_STRING, DrawType_Polygon, L"다각형");
+		AppendMenu(hpop, MF_STRING, DrawType_Text, L"텍스트");
+		AppendMenu(hpop, MF_STRING, DrawType_Bitmap, L"이미지");
 		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
 
 		AppendMenu(hpop, MF_STRING | MF_POPUP, (UINT_PTR)hsubmenu, L"정렬/삭제");
@@ -1066,25 +1242,34 @@ void APIClass::RButtonUp(USHORT x, USHORT y) {
 	}
 }
 APIClass* api;
-HFONT hfont=0;
+HFONT hfont = 0;
 LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	switch (msg) {
 	case WM_CREATE:
-		if(hfont==0)hfont = CreateFont(22, 0, 0, 0, 0, 0, 0, 0, HANGEUL_CHARSET,
-			0, 0, 0, 0, L"맑은 고딕");
+		/*if (hfont == 0)hfont = CreateFont(22, 0, 0, 0, 0, 0, 0, 0, HANGEUL_CHARSET,
+			0, 0, 0, 0, L"맑은 고딕");*/
+	{
+		CreateWindow(L"button", L"색상 설정",
+			WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
+			140, 80, 130, 150, hwnd, (HMENU)0, 0, 0);
+
+		USHORT y= 100;
 		CreateWindowW(L"button", L"선 색상",
 			WS_VISIBLE | WS_CHILD,
-			180, 80, 80, 25, hwnd, (HMENU)1, NULL, NULL);
+			180, y, 80, 25, hwnd, (HMENU)1, NULL, NULL);
+		y += 30;
 		hwnd_plane = CreateWindowW(L"button", L"내부 색상",
 			WS_VISIBLE | WS_CHILD,
-			180, 110, 80, 25, hwnd, (HMENU)2, NULL, NULL);
+			180, y, 80, 25, hwnd, (HMENU)2, NULL, NULL);
+		y += 30;
 		hwnd_plane2 = CreateWindowW(L"button", L"내부 색상2",
 			WS_VISIBLE | WS_CHILD,
-			180, 140, 80, 25, hwnd, (HMENU)DID_BtnPlane2, NULL, NULL);
+			180, y, 80, 25, hwnd, (HMENU)DID_BtnPlane2, NULL, NULL);
+		y += 30;
 		CreateWindowW(L"button", L"설정 복사",
 			WS_VISIBLE | WS_CHILD,
-			180, 170, 80, 25, hwnd, (HMENU)DID_BtnSet, NULL, NULL);
-
+			180, y, 80, 25, hwnd, (HMENU)DID_BtnSet, NULL, NULL);
+	}
 		CreateWindow(L"button", L"채우기 모드",
 			WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
 			5, 80, 120, 125, hwnd, (HMENU)0, 0, 0);
@@ -1102,7 +1287,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			, 15, 175, 100, 20, hwnd, (HMENU)DID_RadioGrad, 0, 0);
 		CheckRadioButton(hwnd, DID_RadioNoBrush, DID_RadioGrad, DID_RadioPlane);
 
-		
+
 		CreateWindow(L"static", L"선 두께", WS_CHILD | WS_VISIBLE,
 			10, 10, 80, 25, hwnd, (HMENU)-1, 0, NULL);
 		CreateWindow(L"static", L"선 타입", WS_CHILD | WS_VISIBLE,
@@ -1110,23 +1295,23 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		CreateWindow(L"static", L"알파값", WS_CHILD | WS_VISIBLE,
 			10, 50, 80, 25, hwnd, (HMENU)-1, 0, NULL);
 
-		hwnd_static[0]=CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
-			190, 10, 80, 25, hwnd, (HMENU)-1, 0, NULL);
+		hwnd_static[0] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
+			190, 10, 30, 25, hwnd, (HMENU)-1, 0, NULL);
 		hwnd_static[1] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
-			190, 30, 80, 25, hwnd, (HMENU)-1, 0, NULL);
+			190, 30, 30, 25, hwnd, (HMENU)-1, 0, NULL);
 		hwnd_static[2] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
-			190, 50, 80, 25, hwnd, (HMENU)-1, 0, NULL);
+			190, 50, 30, 25, hwnd, (HMENU)-1, 0, NULL);
 
 
-		CreateWindow(L"button", L"채우기 모드",
-			WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-			5, 80, 120, 125, hwnd, (HMENU)0, 0, 0);
-
+		
 		dlg_scroll.Create(hwnd, api->g_hin, ID_Scroll, 70, 10, 10, 100);
 		dlg_scroll_line.Create(hwnd, api->g_hin, DID_ScrollLine, 70, 30, 7, 100);
 		dlg_scroll_alpha.Create(hwnd, api->g_hin, DID_ScrollAlpha, 70, 50, 255, 100);
 
-		dlg_combo.Create(hwnd, 210, 20, DID_ComboLine);
+		dlg_combo.Create(hwnd, 230, 20, DID_ComboLine);
+		dlg_combo_grad.Create(hwnd, 230, 50, DID_ComboGrad);
+
+
 		/*dlg_combo.Add(L"일반");
 		dlg_combo.Add(L"줄무니 ↙");
 		dlg_combo.Add(L"바둑판");
@@ -1134,17 +1319,23 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		dlg_combo.Add(L"줄무니 ↘");
 		dlg_combo.Add(L"수평선");
 		dlg_combo.Add(L"수직선");*/
-		for(int i=0;i<HatchStyleMax;i++)
-			dlg_combo.Add(L"Ang");
+		{
+		}
+		for (int i = 0; i < HatchStyleMax; i++) {
+			{
+				wchar_t ts[128];
+				wsprintf(ts, L"Style %d",i);
+				dlg_combo.Add(ts);
+			}
+		}
 
-		dlg_combo_grad.Create(hwnd, 210, 50, DID_ComboGrad);
 		dlg_combo_grad.Add(L"→");
 		dlg_combo_grad.Add(L"←");
 		dlg_combo_grad.Add(L"↑");
 		dlg_combo_grad.Add(L"↓");
 
 		api->SetDialogControl();
-		SendMessage(hwnd_static[0], WM_SETFONT, (WPARAM)hfont, MAKELPARAM(1, 0));
+		//SendMessage(hwnd_static[0], WM_SETFONT, (WPARAM)hfont, MAKELPARAM(1, 0));
 		break;
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
@@ -1154,14 +1345,14 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (api->shapenum)api->shapelist->tempshape = *api->shapenum;
 			break;
 		case DID_ComboLine:
-			api->Set_BrushType(dlg_combo.GetIndex());break;
+			api->Set_BrushType(dlg_combo.GetIndex()); break;
 		case DID_ComboGrad:
-			api->Set_BrushType(dlg_combo_grad.GetIndex());break;
-			
-		case DID_BtnPlane2:api->Set_PlaneColor2();break;
+			api->Set_BrushType(dlg_combo_grad.GetIndex()); break;
 
-		case DID_RadioNoBrush:api->Set_RadioBrush(0);break;
-		case DID_RadioPlane:api->Set_RadioBrush(1);break;
+		case DID_BtnPlane2:api->Set_PlaneColor2(); break;
+
+		case DID_RadioNoBrush:api->Set_RadioBrush(0); break;
+		case DID_RadioPlane:api->Set_RadioBrush(1); break;
 		case DID_RadioHatch:api->Set_RadioBrush(2); break;
 		case DID_RadioGrad:api->Set_RadioBrush(3); break;
 		}
@@ -1170,11 +1361,11 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	case WM_DRAWITEM:
 	{
 		HBRUSH hbrush;
-		auto lpdraw=(LPDRAWITEMSTRUCT)lParam;
+		auto lpdraw = (LPDRAWITEMSTRUCT)lParam;
 		if (lpdraw->itemState & ODS_SELECTED) {
 			hbrush = CreateSolidBrush(RGB(100, 100, 100));
 		}
-		else hbrush = CreateSolidBrush(RGB(255,255,255));
+		else hbrush = CreateSolidBrush(RGB(255, 255, 255));
 		FillRect(lpdraw->hDC, &lpdraw->rcItem, hbrush);
 		if (lpdraw->itemState & ODS_FOCUS) {
 			DrawFocusRect(lpdraw->hDC, &lpdraw->rcItem);
@@ -1183,13 +1374,13 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
 	}
 	case WM_HSCROLL:
-		api->Set_ScrollData(dlg_scroll, 
+		api->Set_ScrollData(dlg_scroll,
 			&api->GetNowShape()->thick, api->GetNowShape(), wParam, lParam);
 		api->Set_ScrollData(dlg_scroll_alpha,
 			&api->GetNowShape()->alpha, api->GetNowShape(), wParam, lParam);
-		api->Set_ScrollData(dlg_scroll_line, 
+		api->Set_ScrollData(dlg_scroll_line,
 			&api->GetNowShape()->linetype, api->GetNowShape(), wParam, lParam);		break;
-	
+
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps;
@@ -1198,17 +1389,17 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		if (!shape)shape = api->GetTempShape();
 		HBRUSH hbrush = (HBRUSH)CreateSolidBrush(shape->linecolor);
 		HBRUSH oldbrush = (HBRUSH)SelectObject(hdc, hbrush);
-		Rectangle(hdc, 150, 80, 170, 100);
+		Rectangle(hdc, 150, 100, 170, 120);
 		DeleteObject(hbrush);
 
 		hbrush = CreateSolidBrush(shape->planecolor);
 		SelectObject(hdc, hbrush);
-		Rectangle(hdc, 150, 110, 170, 130);
+		Rectangle(hdc, 150, 130, 170, 150);
 		DeleteObject(hbrush);
 
 		hbrush = CreateSolidBrush(shape->planecolor2);
 		SelectObject(hdc, hbrush);
-		Rectangle(hdc, 150, 140, 170, 160);
+		Rectangle(hdc, 150, 160, 170, 180);
 		DeleteObject(hbrush);
 
 		SelectObject(hdc, oldbrush);
@@ -1217,7 +1408,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	break;
 	case WM_CLOSE:
 		if (hfont) {
-			DeleteObject(hfont);hfont = 0;
+			DeleteObject(hfont); hfont = 0;
 		}
 		DestroyWindow(hwnd);
 		break;
@@ -1227,7 +1418,8 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	static HCURSOR hcursor;
 	switch (msg) {
-	case WM_SIZE:api->OnSize(wp);return 0;
+	case WM_KEYDOWN:api->KeyDown(wp); return 0;
+	case WM_SIZE:api->OnSize(wp); return 0;
 	case WM_CREATE:api->Create(hwnd); return 0;
 	case WM_COMMAND:api->Command(LOWORD(wp), wp); return 0;
 	case WM_PAINT:api->Paint(hwnd); return 0;
@@ -1289,11 +1481,11 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 #endif
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
-	}
+		}
 #ifdef RESOURCE
 	}
 #endif
-	
+
 	delete api;
 	GdiplusShutdown(gdiptr);
 	return 0;
