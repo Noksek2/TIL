@@ -1,4 +1,5 @@
-#include <Windows.h>
+
+#include "winclass.h"
 #include <gdiplus.h>
 #include <commctrl.h>
 #include <crtdbg.h>
@@ -26,7 +27,7 @@ enum {
 enum {
 	DID_ScrollLine = 4, DID_ComboLine, DID_BtnSet,
 	DID_ScrollAlpha, DID_BtnPlane2, DID_RadioNoBrush, DID_RadioPlane, DID_RadioHatch, DID_RadioGrad,
-	DID_ComboGrad,DID_BtnPaste,
+	DID_ComboGrad, DID_BtnPaste,
 };
 enum {
 	Drag_None = 0, Drag_Draw = 1, Drag_Move, Drag_Size
@@ -243,140 +244,6 @@ struct ShapeList {
 		}
 	}
 };
-class CScroll {
-public:
-	WORD pos;
-	HWND hscroll;
-	WORD pos_max, inc;
-	void Create(HWND hwnd, HINSTANCE g_hin, UINT id, int x, int y, WORD _max = 255, int width = 200) {
-		hscroll = CreateWindow(L"scrollbar", 0, WS_CHILD | WS_VISIBLE |
-			SBS_HORZ, x, y, width, 20, hwnd, (HMENU)id, g_hin, 0);
-		SetScrollRange(hscroll, SB_CTL, 0, _max, true);
-		pos_max = _max;
-		inc = max(1, pos_max / 10);
-		SetScrollPos(hscroll, SB_CTL, 0, true);
-	}
-	void Process(WPARAM wp, LPARAM lp) {
-		WORD msgtype = LOWORD(wp),
-			temp = HIWORD(wp);
-		switch (msgtype) {
-		case SB_LINELEFT:pos = max(0, pos - 1); break;
-		case SB_LINERIGHT:pos = min(pos_max, pos + 1); break;
-		case SB_PAGELEFT:pos = max(0, pos - inc); break;
-		case SB_PAGERIGHT:pos = min(pos_max, pos + inc); break;
-		case SB_THUMBTRACK:pos = temp; break;
-		}
-		SetScrollPos((HWND)lp, SB_CTL, pos, true);
-	}
-	void Set(WORD _pos) {
-		pos = _pos;
-		SetScrollPos(hscroll, SB_CTL, pos, true);
-	}
-};
-class CCheckBox {
-public:
-	bool ischeck;
-	HWND hcheck;
-	void Create(HWND hwnd, UINT id, const TCHAR* name, bool check = true) {
-		ischeck = check;
-		hcheck = CreateWindow(
-			TEXT("button"),
-			name,
-			WS_CHILD | WS_VISIBLE | BS_CHECKBOX,
-			20, 80, 100, 25,
-			hwnd,
-			(HMENU)id,
-			0, NULL);
-	}
-	void Set(bool check) {
-		ischeck = check;
-		if (check) {
-			SendMessage(hcheck, BM_SETCHECK, BST_CHECKED, 0);
-		}
-		else SendMessage(hcheck, BM_SETCHECK, BST_UNCHECKED, 0);
-	}
-	void Process(WPARAM wp) {
-		switch (HIWORD(wp)) {
-		case BN_CLICKED:
-			if (SendMessage(hcheck, BM_GETCHECK, 0, 0) == BST_CHECKED) {
-				Set(false);
-			}
-			else {
-				Set(true);
-			}
-			break;
-		}
-	}
-};
-class CComboBox {
-public:
-	HWND hcombo;
-	void Create(HWND hwnd, int x, int y, int id) {
-		hcombo = CreateWindow(
-			L"combobox", 0, WS_CHILD | WS_VISIBLE
-			| CBS_DROPDOWNLIST | CBS_AUTOHSCROLL |
-			WS_VSCROLL
-			, x, y, 100, 500, hwnd, (HMENU)id, 0, 0
-		);
-	}
-	void Add(const TCHAR* lists) {
-		SendMessage(hcombo, CB_ADDSTRING, 0, (LPARAM)lists);
-	}
-	void Process(WPARAM wp)
-	{
-		int idx;
-		switch (HIWORD(wp)) {
-		case CBN_SELCHANGE:
-			idx = (int)SendMessage(hcombo, CB_GETCURSEL, 0, 0);
-			break;
-			//case CBN_EDITCHANGE:break;
-		}
-	}
-	inline int GetIndex() {
-		return SendMessage(hcombo, CB_GETCURSEL, 0, 0);
-	}
-	inline int SetIndex(int idx) {
-		return SendMessage(hcombo, CB_SETCURSEL, idx, 0);
-	}
-};
-class CRadioButton {
-public:
-	HWND hcheck;
-	bool ischeck;
-	void Create(HWND hwnd, UINT id, const TCHAR* name, int x, int y, bool mainbtn = false, bool check = true) {
-		ischeck = check;
-		hcheck = CreateWindow(
-			TEXT("button"),
-			name,
-			(mainbtn ? WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON | WS_GROUP
-				: WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON)
-			,
-			x, y, 100, 25,
-			hwnd,
-			(HMENU)id,
-			0, NULL);
-	}
-	void Set(bool check) {
-		ischeck = check;
-		if (check) {
-			SendMessage(hcheck, BM_SETCHECK, BST_CHECKED, 0);
-		}
-		else SendMessage(hcheck, BM_SETCHECK, BST_UNCHECKED, 0);
-	}
-	void Process() {
-		ischeck = (SendMessage(hcheck, BM_GETCHECK, 0, 0) == BST_CHECKED);
-		/*switch (HIWORD(wp)) {
-		case BN_CLICKED:
-			if (SendMessage(hcheck, BM_GETCHECK, 0, 0) == BST_CHECKED) {
-				Set(false);
-			}
-			else {
-				Set(true);
-			}
-			break;
-		}*/
-	}
-};
 CScroll dlg_scroll, dlg_scroll_line, dlg_scroll_alpha;
 //CCheckBox dlg_check;
 CComboBox dlg_combo, dlg_combo_grad;
@@ -388,9 +255,10 @@ private:
 	CHOOSECOLOR col;
 	COLORREF coltemp[16];
 	POINT point[10];
+
 	UCHAR point_idx;
 	HBITMAP hBuffer;
-	bool pointmode=false;
+	bool pointmode = false;
 	inline void DrawOneTrack(HDC hdc, long x, long y) {
 		Rectangle(hdc, x - 4, y - 4, x + 4, y + 4);
 	}
@@ -546,6 +414,7 @@ public:
 			coltemp[i] = RGB(rand(), rand(), rand());
 	}
 	void KeyDown(WPARAM);
+	void KeyUp(WPARAM);
 	void Paint(HWND hwnd);
 	void Command(USHORT, WPARAM);
 	void MouseMove(long, long);
@@ -579,13 +448,32 @@ public:
 		return false;
 	}
 	void LButtonUp();
+	void OnChar(WPARAM wp) {
+		switch (wp) {
+		case '1':
+			SendMessage(api_hwnd, WM_COMMAND, DrawType_None, 0);
+			break;
+		case '2':
+			SendMessage(api_hwnd, WM_COMMAND, DrawType_Circle, 0);
+			break;
+		case '3':
+			SendMessage(api_hwnd, WM_COMMAND, DrawType_Square, 0);
+			break;
+		case '4':
+			SendMessage(api_hwnd, WM_COMMAND, DrawType_Line, 0);
+			break;
+		case '5':
+			SendMessage(api_hwnd, WM_COMMAND, DrawType_Polygon, 0);
+			break;
+		}
+	}
 	void OnSize(WPARAM wp) {
 		if (wp != SIZE_MINIMIZED) {
 			if (hBuffer) {
 				DeleteObject(hBuffer);
 				hBuffer = 0;
 			}
-			
+
 		}
 	}
 	void RButtonUp(long, long);
@@ -755,10 +643,12 @@ void APIClass::KeyDown(WPARAM wp) {
 	RECT trt;
 	if ((GetKeyState(VK_TAB) & 0x8000) != 0) {
 		shapenum =
-			shapenum ?
-			(shapenum + 1 < shapelist->data + shapelist->len ?
-				shapenum + 1 : 0)
-			: shapelist->data;
+			shapelist->len? 
+			(shapenum?
+				(shapenum<shapelist->data+shapelist->len? 
+					shapenum + 1 : 0)
+				:shapelist->data)
+			: 0;
 		SetDialogControl();
 		InvalidateRect(api_hwnd, 0, true);
 		return;
@@ -790,6 +680,8 @@ void APIClass::KeyDown(WPARAM wp) {
 			shapelist->setPolyOffset(shapenum, 0, m);
 			action = true;
 		}
+
+
 	}
 	else {
 		if (wp == VK_LEFT) {
@@ -946,8 +838,8 @@ void APIClass::LButtonUp() {
 			//long prevx, prevy;
 			if (point_idx)
 			{
-				if ((mx == oldx && my == oldy)||
-					(oldx==point[0].x&&oldy==point[0].y)) goto ADD;
+				if ((mx == oldx && my == oldy) ||
+					(oldx == point[0].x && oldy == point[0].y)) goto ADD;
 
 			}
 			else {
@@ -1057,7 +949,7 @@ void APIClass::Paint(HWND hwnd) {
 		));
 		gpen.SetStartCap(LineCapRoundAnchor);
 		gpen.SetEndCap(LineCapArrowAnchor);
-		
+
 		gpen.SetDashStyle((DashStyle)d->linetype);
 		gpen.SetWidth(d->thick);
 		{
@@ -1145,7 +1037,7 @@ void APIClass::Paint(HWND hwnd) {
 						));
 					}
 					pathbrush->SetCenterColor(c1);
-					Color cols[] = {c2};
+					Color cols[] = { c2 };
 					int i = 1;
 					pathbrush->SetSurroundColors(cols, &i);
 					allbrush = pathbrush;
@@ -1309,7 +1201,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		/*if (hfont == 0)hfont = CreateFont(22, 0, 0, 0, 0, 0, 0, 0, HANGEUL_CHARSET,
 			0, 0, 0, 0, L"맑은 고딕");*/
 	{
-		
+
 
 		USHORT y = 100;
 		CreateWindowW(L"button", L"선 색상",
@@ -1415,12 +1307,12 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 			if (api->shapenum) {
 				{
 					auto shp = api->shapenum;
-					
-					ShapeList::ShapeData bf=*shp;
 
-					
+					ShapeList::ShapeData bf = *shp;
+
+
 					*shp = api->shapelist->tempshape;
-					
+
 					shp->image = bf.image;
 					shp->point_len = bf.point_len;
 					shp->point = bf.point;
@@ -1428,7 +1320,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 					shp->type = bf.type;
 					shp->t = bf.t;
 
-					
+
 					api->SetDialogControl();
 					InvalidateRect(api->api_hwnd, 0, true);
 				}
@@ -1514,6 +1406,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	case WM_PAINT:api->Paint(hwnd); return 0;
 	case WM_MOUSEMOVE:api->MouseMove(LOWORD(lp), HIWORD(lp)); return 0;
 		return 0;
+	case WM_CHAR:api->OnChar(wp);return 0;
 	case WM_LBUTTONDOWN:
 		api->LButtonDown(LOWORD(lp), HIWORD(lp)); return 0;
 	case WM_LBUTTONUP:
@@ -1552,8 +1445,8 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 		return 0;
 	}
 	hwnd = CreateWindow(L"WINDRAW", L"WINDRAW", WS_OVERLAPPEDWINDOW | WS_VSCROLL,
-		CW_USEDEFAULT, CW_USEDEFAULT, 
-		800,600,
+		CW_USEDEFAULT, CW_USEDEFAULT,
+		800, 600,
 		//CW_USEDEFAULT, CW_USEDEFAULT,
 		0, (HMENU)0, hin, 0);
 	ShowWindow(hwnd, 1);
