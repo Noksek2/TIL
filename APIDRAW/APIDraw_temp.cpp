@@ -20,13 +20,13 @@ enum {
 	DrawType_None, DrawType_Circle, DrawType_Square, DrawType_Line,
 	Menu_Delete, Menu_Clear, Menu_Prop,
 	Menu_Forward, Menu_FarForward, Menu_Backward, Menu_FarBack,
-	Menu_Exit, ID_Scroll, DrawType_Polygon,DrawType_Text,
+	Menu_Exit, ID_Scroll, DrawType_Polygon, DrawType_Text,
 	DrawType_Bitmap
 };
 enum {
 	DID_ScrollLine = 4, DID_ComboLine, DID_BtnSet,
 	DID_ScrollAlpha, DID_BtnPlane2, DID_RadioNoBrush, DID_RadioPlane, DID_RadioHatch, DID_RadioGrad,
-	DID_ComboGrad,
+	DID_ComboGrad,DID_BtnPaste,
 };
 enum {
 	Drag_None = 0, Drag_Draw = 1, Drag_Move, Drag_Size
@@ -40,8 +40,8 @@ inline int LP_GetMouseY(LPARAM lp) { return HIWORD(lp); }
 LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 struct ShapeText {
 	WCHAR fontface[32];
-	WCHAR *text;
-	USHORT fontsize,len;
+	WCHAR* text;
+	USHORT fontsize, len;
 };
 struct ShapeList {
 	struct ShapeData {
@@ -96,7 +96,7 @@ struct ShapeList {
 		OutputDebugString(str);
 		len++;
 	}
-	void setPolyOffset(ShapeData* sh,long x,long y) {
+	void setPolyOffset(ShapeData* sh, long x, long y) {
 		for (auto d = sh->point; d < sh->point + sh->point_len; d++) {
 			d->x += x;
 			d->y += y;
@@ -106,7 +106,7 @@ struct ShapeList {
 		if (len >= capa)return;
 		data[len] = tempshape;
 		RECT mrt;
-		SetRect(&mrt, _point->x,_point->y, _point->x,_point->y);
+		SetRect(&mrt, _point->x, _point->y, _point->x, _point->y);
 		for (auto d = _point; d < _point + point_len; d++) {
 			if (mrt.left > d->x)mrt.left = d->x;
 			else if (mrt.right < d->x)mrt.right = d->x;
@@ -116,7 +116,7 @@ struct ShapeList {
 		}
 		data[len].rt = mrt;
 		data[len].type = DrawType_Polygon;
-		
+
 		data[len].point = (POINT*)malloc(sizeof(POINT) * point_len);
 		data[len].point_len = point_len;
 		memcpy(data[len].point, _point, sizeof(POINT) * point_len);
@@ -220,7 +220,7 @@ struct ShapeList {
 				{
 					{
 						HRGN hpoly = CreatePolygonRgn(
-							d->point,d->point_len,WINDING
+							d->point, d->point_len, WINDING
 						);
 						bool ispoly = PtInRegion(hpoly, x, y);
 						DeleteObject(hpoly);
@@ -390,6 +390,7 @@ private:
 	POINT point[10];
 	UCHAR point_idx;
 	HBITMAP hBuffer;
+	bool pointmode=false;
 	inline void DrawOneTrack(HDC hdc, long x, long y) {
 		Rectangle(hdc, x - 4, y - 4, x + 4, y + 4);
 	}
@@ -542,7 +543,7 @@ public:
 		hBuffer = 0;
 		api_hwnd = hwnd;
 		for (int i = 0; i < 16; i++)
-			coltemp[i] = RGB(rand(),rand(),rand());
+			coltemp[i] = RGB(rand(), rand(), rand());
 	}
 	void KeyDown(WPARAM);
 	void Paint(HWND hwnd);
@@ -584,6 +585,7 @@ public:
 				DeleteObject(hBuffer);
 				hBuffer = 0;
 			}
+			
 		}
 	}
 	void RButtonUp(long, long);
@@ -739,81 +741,81 @@ public:
 };
 void APIClass::KeyDown(WPARAM wp) {
 	bool isshift, isctrl;
-	isshift = (GetKeyState(VK_SHIFT) & 0x8000)!=0;
+	isshift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
 	isctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-	long m = isctrl?1:gridw;
+	long m = isctrl ? 1 : gridw;
 
-	
+
 	if ((GetKeyState(VK_DELETE) & 0x8000)) {
-			SendMessage(api_hwnd, WM_COMMAND,isctrl?Menu_Clear:Menu_Delete, 0);
-			return;
-		}
-	bool action=false;
+		SendMessage(api_hwnd, WM_COMMAND, isctrl ? Menu_Clear : Menu_Delete, 0);
+		return;
+	}
+	bool action = false;
 
 	RECT trt;
 	if ((GetKeyState(VK_TAB) & 0x8000) != 0) {
-		shapenum = 
-			shapenum?
-			(shapenum+1<shapelist->data+shapelist->len?
-				shapenum+1:shapenum)
-			:shapelist->data;
+		shapenum =
+			shapenum ?
+			(shapenum + 1 < shapelist->data + shapelist->len ?
+				shapenum + 1 : 0)
+			: shapelist->data;
 		SetDialogControl();
 		InvalidateRect(api_hwnd, 0, true);
 		return;
 	}
 	if (!shapenum)return;
-		if ((GetKeyState(VK_ESCAPE) & 0x8000) != 0) {
-			shapenum = 0;
-			SetDialogControl();
-			InvalidateRect(api_hwnd, 0, true);
-			return;
+	if ((GetKeyState(VK_ESCAPE) & 0x8000) != 0) {
+		shapenum = 0;
+		SetDialogControl();
+		InvalidateRect(api_hwnd, 0, true);
+		return;
+	}
+	trt = shapenum->rt;
+	if (!isshift) {
+		if (wp == VK_LEFT) {
+			OffsetRect(&trt, -m, 0); action = true;
+			shapelist->setPolyOffset(shapenum, -m, 0);
 		}
-		trt = shapenum->rt;
-		if (!isshift) {
-			if (wp == VK_LEFT) {
-				OffsetRect(&trt, -m, 0); action = true;
-				shapelist->setPolyOffset(shapenum, -m, 0);
-			}
-			else if (wp == VK_RIGHT) {
-				action = true; OffsetRect(&trt, +m, 0);
-				shapelist->setPolyOffset(shapenum, +m, 0);
-			}
-			if (wp == VK_UP) {
-				OffsetRect(&trt, 0, -m);
-				shapelist->setPolyOffset(shapenum, 0, -m);
-				action = true;
-			}
-			else if (wp == VK_DOWN) {
-				OffsetRect(&trt, 0, m);
-				shapelist->setPolyOffset(shapenum, 0, m);
-				action = true;
-			}
+		else if (wp == VK_RIGHT) {
+			action = true; OffsetRect(&trt, +m, 0);
+			shapelist->setPolyOffset(shapenum, +m, 0);
 		}
-		else {
-			if (wp == VK_LEFT) {
-				trt.right -= 10;
-				action = true;
-			}
-			else if (wp == VK_RIGHT) {
-				action = true; trt.right += 10;
-			}
-			if (wp == VK_UP) {
-				trt.bottom -= 10;
-				action = true;
-			}
-			else if (wp == VK_DOWN) {
-				trt.bottom += 10;
-				action = true;
-			}
+		if (wp == VK_UP) {
+			OffsetRect(&trt, 0, -m);
+			shapelist->setPolyOffset(shapenum, 0, -m);
+			action = true;
 		}
-		if (action) {
-			shapenum->rt = trt;
-			InvalidateRect(api_hwnd, 0, true);
+		else if (wp == VK_DOWN) {
+			OffsetRect(&trt, 0, m);
+			shapelist->setPolyOffset(shapenum, 0, m);
+			action = true;
 		}
+	}
+	else {
+		if (wp == VK_LEFT) {
+			trt.right -= 10;
+			action = true;
+		}
+		else if (wp == VK_RIGHT) {
+			action = true; trt.right += 10;
+		}
+		if (wp == VK_UP) {
+			trt.bottom -= 10;
+			action = true;
+		}
+		else if (wp == VK_DOWN) {
+			trt.bottom += 10;
+			action = true;
+		}
+	}
+	if (action) {
+		shapenum->rt = trt;
+		InvalidateRect(api_hwnd, 0, true);
+	}
 
 }
 void APIClass::LButtonDown(long x, long y) {
-	long rx=x, ry=y;
+	long rx = x, ry = y;
 	AdjustToGrid(x, y);
 	ShapeList::ShapeData* FindData = 0;
 	if (drawtype == DrawType_None) {
@@ -826,7 +828,7 @@ void APIClass::LButtonDown(long x, long y) {
 				goto END;
 			}
 		}
-		
+
 		FindData = shapelist->find(rx, ry);
 		shapenum = FindData;
 
@@ -891,10 +893,10 @@ void APIClass::MouseMove(long x, long y) {
 		/*SetRect(rt, rt->left + ex - oldx, rt->top + ex - oldx,
 			rt->right + ex - oldx, rt->bottom + ex - oldx);*/
 		DrawTemp();
-		
-		
+
+
 		if (shapenum->type == DrawType_Polygon) {
-			shapelist->setPolyOffset(shapenum,ex - oldx, ey - oldy);
+			shapelist->setPolyOffset(shapenum, ex - oldx, ey - oldy);
 		}
 		OffsetRect(rt, ex - oldx, ey - oldy);
 		oldx = ex;
@@ -944,7 +946,8 @@ void APIClass::LButtonUp() {
 			//long prevx, prevy;
 			if (point_idx)
 			{
-				if (mx == oldx && my == oldy) goto ADD;
+				if ((mx == oldx && my == oldy)||
+					(oldx==point[0].x&&oldy==point[0].y)) goto ADD;
 
 			}
 			else {
@@ -954,9 +957,14 @@ void APIClass::LButtonUp() {
 			point[point_idx].x = oldx;
 			point[point_idx++].y = oldy;
 			if (point_idx == 9)goto ADD;
-			
+
 			mx = oldx; my = oldy;
-			//InvalidateRect(api_hwnd, 0, true);
+			InvalidateRect(api_hwnd, 0, false);
+			/*{
+				HDC hdc= GetDC(api_hwnd);
+				Polygon(hdc, point, point_idx);
+				ReleaseDC(api_hwnd, hdc);
+			}*/
 			return;
 		ADD:
 			shapelist->append_polygon(point, point_idx);
@@ -1009,9 +1017,9 @@ void APIClass::Paint(HWND hwnd) {
 	FillRect(hmemdc, &bitrt, GetSysColorBrush(COLOR_WINDOW));
 	HPEN oldpen;
 	if (isgrid) {
-		oldpen = (HPEN)SelectObject(hmemdc, 
+		oldpen = (HPEN)SelectObject(hmemdc,
 			CreatePen(PS_SOLID, 1, RGB(200, 200, 200))
-			);
+		);
 		for (int y = 0; y < bitrt.bottom; y += gridw) {
 			MoveToEx(hmemdc, 0, y, 0);
 			LineTo(hmemdc, bitrt.right, y);
@@ -1027,11 +1035,16 @@ void APIClass::Paint(HWND hwnd) {
 	Pen gpen(basiccol);
 	SolidBrush gbrush(basiccol);
 	Brush* allbrush;
+	Point p[10];
 
 	gp.DrawEllipse(&gpen, 10, 10, 200, 200);
 	gp.SetSmoothingMode(SmoothingModeAntiAlias);
 	Gdiplus::Rect grt;
 	for (auto d = shapelist->data; d != shapelist->data + shapelist->len; d++) {
+		for (int i = 0; i < d->point_len; i++) {
+			p[i].X = d->point[i].x;
+			p[i].Y = d->point[i].y;
+		}
 		rt = &d->rt;
 		grt.X = rt->left;
 		grt.Y = rt->top;
@@ -1042,6 +1055,9 @@ void APIClass::Paint(HWND hwnd) {
 			GetGValue(d->linecolor),
 			GetBValue(d->linecolor)
 		));
+		gpen.SetStartCap(LineCapRoundAnchor);
+		gpen.SetEndCap(LineCapArrowAnchor);
+		
 		gpen.SetDashStyle((DashStyle)d->linetype);
 		gpen.SetWidth(d->thick);
 		{
@@ -1072,35 +1088,76 @@ void APIClass::Paint(HWND hwnd) {
 					));
 			}
 			else if (d->brushmode == Brush_Grad) {
-				allbrush = new LinearGradientBrush(
-					grt,
-					Color(d->alpha,
-						GetRValue(d->planecolor),
-						GetGValue(d->planecolor),
-						GetBValue(d->planecolor)
-					),
-					Color(d->alpha,
-						GetRValue(d->planecolor2),
-						GetGValue(d->planecolor2),
-						GetBValue(d->planecolor2)
-					), d->brushtype * 90.0f
-				);
+				if (d->brushtype < 4) {
+					allbrush = new LinearGradientBrush(
+						grt,
+						Color(d->alpha,
+							GetRValue(d->planecolor),
+							GetGValue(d->planecolor),
+							GetBValue(d->planecolor)
+						),
+						Color(d->alpha,
+							GetRValue(d->planecolor2),
+							GetGValue(d->planecolor2),
+							GetBValue(d->planecolor2)
+						), d->brushtype * 90.0f
+					);
+				}
+				else {
+					GraphicsPath path;
+					if (d->type == DrawType_Square) {
+						path.AddRectangle(grt);
 
+					}
+					else if (d->type == DrawType_Circle) {
+						path.AddEllipse(grt);
+
+					}
+					else if (d->type == DrawType_Polygon) {
+						path.AddPolygon(p, d->point_len);
+					}
+					//path.AddEllipse(grt);
+					auto pathbrush = new PathGradientBrush(&path);
+					Color c1, c2;
+					if (d->brushtype == 4) {
+						c1.SetValue(Color::MakeARGB(d->alpha,
+							GetRValue(d->planecolor),
+							GetGValue(d->planecolor),
+							GetBValue(d->planecolor)
+						));
+						c2.SetValue(Color::MakeARGB(d->alpha,
+							GetRValue(d->planecolor2),
+							GetGValue(d->planecolor2),
+							GetBValue(d->planecolor2)
+						));
+
+					}
+					else {
+						c2.SetValue(Color::MakeARGB(d->alpha,
+							GetRValue(d->planecolor),
+							GetGValue(d->planecolor),
+							GetBValue(d->planecolor)
+						));
+						c1.SetValue(Color::MakeARGB(d->alpha,
+							GetRValue(d->planecolor2),
+							GetGValue(d->planecolor2),
+							GetBValue(d->planecolor2)
+						));
+					}
+					pathbrush->SetCenterColor(c1);
+					Color cols[] = {c2};
+					int i = 1;
+					pathbrush->SetSurroundColors(cols, &i);
+					allbrush = pathbrush;
+				}
 			}
-
-
 			switch (d->type) {
 			case DrawType_Polygon:
 			{
-					Point p[10];
-					for (int i = 0; i < d->point_len; i++) {
-						p[i].X = d->point[i].x;
-						p[i].Y = d->point[i].y;
-					}
-					gp.DrawPolygon(&gpen, p, d->point_len);
-					gp.FillPolygon(allbrush, p, d->point_len);
-				}
-				break;
+				gp.DrawPolygon(&gpen, p, d->point_len);
+				gp.FillPolygon(allbrush, p, d->point_len);
+			}
+			break;
 			case DrawType_Circle:
 				gp.DrawEllipse(&gpen, grt);
 				gp.FillEllipse(allbrush, grt);
@@ -1118,6 +1175,9 @@ void APIClass::Paint(HWND hwnd) {
 
 	}
 	if (shapenum)DrawTracker(hmemdc);
+	if (drawtype == DrawType_Polygon) {
+		Polygon(hmemdc, point, point_idx);
+	}
 	BitBlt(hdc, 0, 0, bitrt.right, bitrt.bottom, hmemdc, 0, 0, SRCCOPY);
 	SelectObject(hmemdc, holdbit);
 	DeleteDC(hmemdc);
@@ -1249,11 +1309,9 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		/*if (hfont == 0)hfont = CreateFont(22, 0, 0, 0, 0, 0, 0, 0, HANGEUL_CHARSET,
 			0, 0, 0, 0, L"맑은 고딕");*/
 	{
-		CreateWindow(L"button", L"색상 설정",
-			WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-			140, 80, 130, 150, hwnd, (HMENU)0, 0, 0);
+		
 
-		USHORT y= 100;
+		USHORT y = 100;
 		CreateWindowW(L"button", L"선 색상",
 			WS_VISIBLE | WS_CHILD,
 			180, y, 80, 25, hwnd, (HMENU)1, NULL, NULL);
@@ -1268,81 +1326,113 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		y += 30;
 		CreateWindowW(L"button", L"설정 복사",
 			WS_VISIBLE | WS_CHILD,
-			180, y, 80, 25, hwnd, (HMENU)DID_BtnSet, NULL, NULL);
-	}
-		CreateWindow(L"button", L"채우기 모드",
+			150, y, 80, 25, hwnd, (HMENU)DID_BtnSet, NULL, NULL);
+		y += 30;
+		CreateWindowW(L"button", L"설정 붙여넣기",
+			WS_VISIBLE | WS_CHILD,
+			150, y, 120, 25, hwnd, (HMENU)DID_BtnPaste, NULL, NULL);
+		CreateWindow(L"button", L"색상 설정",
 			WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-			5, 80, 120, 125, hwnd, (HMENU)0, 0, 0);
+			140, 80, 150, 170, hwnd, (HMENU)0, 0, 0);
+	}
+	CreateWindow(L"button", L"채우기 모드",
+		WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
+		5, 80, 120, 125, hwnd, (HMENU)0, 0, 0);
 
-		dlg_radio[0].hcheck = CreateWindow(L"button", L"색상 없음", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
-			| WS_GROUP,
-			15, 100, 100, 20, hwnd, (HMENU)DID_RadioNoBrush, 0, 0);
+	dlg_radio[0].hcheck = CreateWindow(L"button", L"색상 없음", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
+		| WS_GROUP,
+		15, 100, 100, 20, hwnd, (HMENU)DID_RadioNoBrush, 0, 0);
 
-		dlg_radio[1].hcheck = CreateWindow(L"button", L"일반", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
-			15, 125, 100, 20, hwnd, (HMENU)DID_RadioPlane, 0, 0);
-		dlg_radio[1].ischeck = true;
-		dlg_radio[2].hcheck = CreateWindow(L"button", L"해치", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
-			, 15, 150, 100, 20, hwnd, (HMENU)DID_RadioHatch, 0, 0);
-		dlg_radio[3].hcheck = CreateWindow(L"button", L"그라데이션", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
-			, 15, 175, 100, 20, hwnd, (HMENU)DID_RadioGrad, 0, 0);
-		CheckRadioButton(hwnd, DID_RadioNoBrush, DID_RadioGrad, DID_RadioPlane);
-
-
-		CreateWindow(L"static", L"선 두께", WS_CHILD | WS_VISIBLE,
-			10, 10, 80, 25, hwnd, (HMENU)-1, 0, NULL);
-		CreateWindow(L"static", L"선 타입", WS_CHILD | WS_VISIBLE,
-			10, 30, 80, 25, hwnd, (HMENU)-1, 0, NULL);
-		CreateWindow(L"static", L"알파값", WS_CHILD | WS_VISIBLE,
-			10, 50, 80, 25, hwnd, (HMENU)-1, 0, NULL);
-
-		hwnd_static[0] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
-			190, 10, 30, 25, hwnd, (HMENU)-1, 0, NULL);
-		hwnd_static[1] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
-			190, 30, 30, 25, hwnd, (HMENU)-1, 0, NULL);
-		hwnd_static[2] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
-			190, 50, 30, 25, hwnd, (HMENU)-1, 0, NULL);
+	dlg_radio[1].hcheck = CreateWindow(L"button", L"일반", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON,
+		15, 125, 100, 20, hwnd, (HMENU)DID_RadioPlane, 0, 0);
+	dlg_radio[1].ischeck = true;
+	dlg_radio[2].hcheck = CreateWindow(L"button", L"해치", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
+		, 15, 150, 100, 20, hwnd, (HMENU)DID_RadioHatch, 0, 0);
+	dlg_radio[3].hcheck = CreateWindow(L"button", L"그라데이션", WS_CHILD | WS_VISIBLE | BS_AUTORADIOBUTTON
+		, 15, 175, 100, 20, hwnd, (HMENU)DID_RadioGrad, 0, 0);
+	CheckRadioButton(hwnd, DID_RadioNoBrush, DID_RadioGrad, DID_RadioPlane);
 
 
-		
-		dlg_scroll.Create(hwnd, api->g_hin, ID_Scroll, 70, 10, 10, 100);
-		dlg_scroll_line.Create(hwnd, api->g_hin, DID_ScrollLine, 70, 30, 7, 100);
-		dlg_scroll_alpha.Create(hwnd, api->g_hin, DID_ScrollAlpha, 70, 50, 255, 100);
+	CreateWindow(L"static", L"선 두께", WS_CHILD | WS_VISIBLE,
+		10, 10, 80, 25, hwnd, (HMENU)-1, 0, NULL);
+	CreateWindow(L"static", L"선 타입", WS_CHILD | WS_VISIBLE,
+		10, 30, 80, 25, hwnd, (HMENU)-1, 0, NULL);
+	CreateWindow(L"static", L"알파값", WS_CHILD | WS_VISIBLE,
+		10, 50, 80, 25, hwnd, (HMENU)-1, 0, NULL);
 
-		dlg_combo.Create(hwnd, 230, 20, DID_ComboLine);
-		dlg_combo_grad.Create(hwnd, 230, 50, DID_ComboGrad);
+	hwnd_static[0] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
+		190, 10, 30, 25, hwnd, (HMENU)-1, 0, NULL);
+	hwnd_static[1] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
+		190, 30, 30, 25, hwnd, (HMENU)-1, 0, NULL);
+	hwnd_static[2] = CreateWindow(L"static", L"0", WS_CHILD | WS_VISIBLE,
+		190, 50, 30, 25, hwnd, (HMENU)-1, 0, NULL);
 
 
-		/*dlg_combo.Add(L"일반");
-		dlg_combo.Add(L"줄무니 ↙");
-		dlg_combo.Add(L"바둑판");
-		dlg_combo.Add(L"줄무니 ※");
-		dlg_combo.Add(L"줄무니 ↘");
-		dlg_combo.Add(L"수평선");
-		dlg_combo.Add(L"수직선");*/
+
+	dlg_scroll.Create(hwnd, api->g_hin, ID_Scroll, 70, 10, 10, 100);
+	dlg_scroll_line.Create(hwnd, api->g_hin, DID_ScrollLine, 70, 30, 7, 100);
+	dlg_scroll_alpha.Create(hwnd, api->g_hin, DID_ScrollAlpha, 70, 50, 255, 100);
+
+	dlg_combo.Create(hwnd, 230, 20, DID_ComboLine);
+	dlg_combo_grad.Create(hwnd, 230, 50, DID_ComboGrad);
+
+
+	/*dlg_combo.Add(L"일반");
+	dlg_combo.Add(L"줄무니 ↙");
+	dlg_combo.Add(L"바둑판");
+	dlg_combo.Add(L"줄무니 ※");
+	dlg_combo.Add(L"줄무니 ↘");
+	dlg_combo.Add(L"수평선");
+	dlg_combo.Add(L"수직선");*/
+	{
+	}
+	for (int i = 0; i < HatchStyleMax; i++) {
 		{
+			wchar_t ts[128];
+			wsprintf(ts, L"Style %d", i);
+			dlg_combo.Add(ts);
 		}
-		for (int i = 0; i < HatchStyleMax; i++) {
-			{
-				wchar_t ts[128];
-				wsprintf(ts, L"Style %d",i);
-				dlg_combo.Add(ts);
-			}
-		}
+	}
 
-		dlg_combo_grad.Add(L"→");
-		dlg_combo_grad.Add(L"←");
-		dlg_combo_grad.Add(L"↑");
-		dlg_combo_grad.Add(L"↓");
+	dlg_combo_grad.Add(L"→");
+	dlg_combo_grad.Add(L"←");
+	dlg_combo_grad.Add(L"↑");
+	dlg_combo_grad.Add(L"↓");
+	dlg_combo_grad.Add(L"원형1");
+	dlg_combo_grad.Add(L"원형2");
 
-		api->SetDialogControl();
-		//SendMessage(hwnd_static[0], WM_SETFONT, (WPARAM)hfont, MAKELPARAM(1, 0));
-		break;
+	api->SetDialogControl();
+	//SendMessage(hwnd_static[0], WM_SETFONT, (WPARAM)hfont, MAKELPARAM(1, 0));
+	break;
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
 		case 1:api->Set_ShapeColor(true);  break;
 		case 2:api->Set_ShapeColor(); break;
 		case DID_BtnSet:
 			if (api->shapenum)api->shapelist->tempshape = *api->shapenum;
+			break;
+		case DID_BtnPaste:
+			if (api->shapenum) {
+				{
+					auto shp = api->shapenum;
+					
+					ShapeList::ShapeData bf=*shp;
+
+					
+					*shp = api->shapelist->tempshape;
+					
+					shp->image = bf.image;
+					shp->point_len = bf.point_len;
+					shp->point = bf.point;
+					shp->rt = bf.rt;
+					shp->type = bf.type;
+					shp->t = bf.t;
+
+					
+					api->SetDialogControl();
+					InvalidateRect(api->api_hwnd, 0, true);
+				}
+			}
 			break;
 		case DID_ComboLine:
 			api->Set_BrushType(dlg_combo.GetIndex()); break;
@@ -1416,7 +1506,6 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	return (DefWindowProcW(hwnd, msg, wParam, lParam));
 }
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-	static HCURSOR hcursor;
 	switch (msg) {
 	case WM_KEYDOWN:api->KeyDown(wp); return 0;
 	case WM_SIZE:api->OnSize(wp); return 0;
@@ -1425,17 +1514,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	case WM_PAINT:api->Paint(hwnd); return 0;
 	case WM_MOUSEMOVE:api->MouseMove(LOWORD(lp), HIWORD(lp)); return 0;
 		return 0;
-	case WM_LBUTTONDOWN:hcursor = LoadCursor(0, IDC_HAND);
+	case WM_LBUTTONDOWN:
 		api->LButtonDown(LOWORD(lp), HIWORD(lp)); return 0;
 	case WM_LBUTTONUP:
-		hcursor = LoadCursor(0, IDC_ARROW);
 		api->LButtonUp(); return 0;
 	case WM_RBUTTONUP:api->RButtonUp(LOWORD(lp), HIWORD(lp));
 		return 0;
 	case WM_SETCURSOR:
 		if (!api->OnSetCursor())return(DefWindowProc(hwnd, WM_SETCURSOR, wp, lp));
 		return 0;
-
 	case WM_DESTROY:
 		api->Destroy();
 		return 0;
@@ -1465,7 +1552,9 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 		return 0;
 	}
 	hwnd = CreateWindow(L"WINDRAW", L"WINDRAW", WS_OVERLAPPEDWINDOW | WS_VSCROLL,
-		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+		CW_USEDEFAULT, CW_USEDEFAULT, 
+		800,600,
+		//CW_USEDEFAULT, CW_USEDEFAULT,
 		0, (HMENU)0, hin, 0);
 	ShowWindow(hwnd, 1);
 	hin;
@@ -1490,6 +1579,7 @@ int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
 	GdiplusShutdown(gdiptr);
 	return 0;
 }
+
 /*
 
 https://stpetrus27.wordpress.com/2018/06/04/vc-vc-dialog-without-the-resource-file/
