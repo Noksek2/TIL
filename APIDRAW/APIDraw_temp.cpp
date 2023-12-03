@@ -255,10 +255,11 @@ private:
 	CHOOSECOLOR col;
 	COLORREF coltemp[16];
 	POINT point[10];
-
-	UCHAR point_idx;
 	HBITMAP hBuffer;
+	UCHAR point_idx;
+	
 	bool pointmode = false;
+	bool isctrl = false, isshift = false;
 	inline void DrawOneTrack(HDC hdc, long x, long y) {
 		Rectangle(hdc, x - 4, y - 4, x + 4, y + 4);
 	}
@@ -371,7 +372,7 @@ private:
 
 			DrawOneTrack(hdc, rt.left, rt.bottom);
 			DrawOneTrack(hdc, (rt.left + rt.right) / 2, rt.bottom);
-			DrawOneTrack(hdc, rt.right, rt.bottom);
+			DrawOneTArack(hdc, rt.right, rt.bottom);
 		}
 	}
 	WCHAR* TrackCursor[10] = { 0,
@@ -448,25 +449,6 @@ public:
 		return false;
 	}
 	void LButtonUp();
-	void OnChar(WPARAM wp) {
-		switch (wp) {
-		case '1':
-			SendMessage(api_hwnd, WM_COMMAND, DrawType_None, 0);
-			break;
-		case '2':
-			SendMessage(api_hwnd, WM_COMMAND, DrawType_Circle, 0);
-			break;
-		case '3':
-			SendMessage(api_hwnd, WM_COMMAND, DrawType_Square, 0);
-			break;
-		case '4':
-			SendMessage(api_hwnd, WM_COMMAND, DrawType_Line, 0);
-			break;
-		case '5':
-			SendMessage(api_hwnd, WM_COMMAND, DrawType_Polygon, 0);
-			break;
-		}
-	}
 	void OnSize(WPARAM wp) {
 		if (wp != SIZE_MINIMIZED) {
 			if (hBuffer) {
@@ -628,38 +610,61 @@ public:
 
 };
 void APIClass::KeyDown(WPARAM wp) {
-	bool isshift, isctrl;
-	isshift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-	isctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+	//bool isshift, isctrl;
+	if (wp == VK_SHIFT)isshift = true;
+	else if (wp == VK_CONTROL)isctrl = true;
 	long m = isctrl ? 1 : gridw;
 
-
-	if ((GetKeyState(VK_DELETE) & 0x8000)) {
-		SendMessage(api_hwnd, WM_COMMAND, isctrl ? Menu_Clear : Menu_Delete, 0);
-		return;
-	}
 	bool action = false;
 
 	RECT trt;
-	if ((GetKeyState(VK_TAB) & 0x8000) != 0) {
+
+	if (wp==VK_DELETE) {
+		SendMessage(api_hwnd, WM_COMMAND, isctrl ? Menu_Clear : Menu_Delete, 0);
+		return;
+	}
+	
+	else if (wp==VK_TAB) {
 		shapenum =
-			shapelist->len? 
-			(shapenum?
-				(shapenum<shapelist->data+shapelist->len? 
-					shapenum + 1 : 0)
-				:shapelist->data)
+			shapelist->len ?
+			(shapenum ?
+			(shapenum < shapelist->data + shapelist->len ?
+				shapenum + 1 : 0)
+				: shapelist->data)
 			: 0;
 		SetDialogControl();
 		InvalidateRect(api_hwnd, 0, true);
 		return;
 	}
-	if (!shapenum)return;
-	if ((GetKeyState(VK_ESCAPE) & 0x8000) != 0) {
+	else if (wp == VK_ESCAPE) {
 		shapenum = 0;
 		SetDialogControl();
 		InvalidateRect(api_hwnd, 0, true);
 		return;
 	}
+	switch (wp) {
+	case '1':
+		SendMessage(api_hwnd, WM_COMMAND, DrawType_None, 0);
+		return;
+	case '2':
+		SendMessage(api_hwnd, WM_COMMAND, DrawType_Circle, 0);
+		return;
+	case '3':
+		SendMessage(api_hwnd, WM_COMMAND, DrawType_Square, 0);
+		return;
+	case '4':
+		SendMessage(api_hwnd, WM_COMMAND, DrawType_Line, 0);
+		return;
+	case '5':
+		SendMessage(api_hwnd, WM_COMMAND, DrawType_Polygon, 0);
+		return;
+	case'P':
+		if(isctrl)
+			SendMessage(api_hwnd, WM_COMMAND, Menu_Prop, 0);
+		return;
+	}
+	if (!shapenum)return;
+	
 	trt = shapenum->rt;
 	if (!isshift) {
 		if (wp == VK_LEFT) {
@@ -705,6 +710,10 @@ void APIClass::KeyDown(WPARAM wp) {
 		InvalidateRect(api_hwnd, 0, true);
 	}
 
+}
+void APIClass::KeyUp(WPARAM wp) {
+	if (wp == VK_CONTROL)isctrl = false;
+	else if (wp == VK_SHIFT)isshift = false;
 }
 void APIClass::LButtonDown(long x, long y) {
 	long rx = x, ry = y;
@@ -1400,13 +1409,14 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	switch (msg) {
 	case WM_KEYDOWN:api->KeyDown(wp); return 0;
+	case WM_KEYUP:api->KeyUp(wp); return 0;
 	case WM_SIZE:api->OnSize(wp); return 0;
 	case WM_CREATE:api->Create(hwnd); return 0;
 	case WM_COMMAND:api->Command(LOWORD(wp), wp); return 0;
 	case WM_PAINT:api->Paint(hwnd); return 0;
 	case WM_MOUSEMOVE:api->MouseMove(LOWORD(lp), HIWORD(lp)); return 0;
 		return 0;
-	case WM_CHAR:api->OnChar(wp);return 0;
+	//case WM_CHAR:api->OnChar(wp); return 0;
 	case WM_LBUTTONDOWN:
 		api->LButtonDown(LOWORD(lp), HIWORD(lp)); return 0;
 	case WM_LBUTTONUP:
