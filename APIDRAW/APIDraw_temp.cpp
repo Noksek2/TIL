@@ -372,7 +372,7 @@ private:
 
 			DrawOneTrack(hdc, rt.left, rt.bottom);
 			DrawOneTrack(hdc, (rt.left + rt.right) / 2, rt.bottom);
-			DrawOneTArack(hdc, rt.right, rt.bottom);
+			DrawOneTrack(hdc, rt.right, rt.bottom);
 		}
 	}
 	WCHAR* TrackCursor[10] = { 0,
@@ -414,6 +414,7 @@ public:
 		for (int i = 0; i < 16; i++)
 			coltemp[i] = RGB(rand(), rand(), rand());
 	}
+	void KillFocus() { isctrl = isshift = false; }
 	void KeyDown(WPARAM);
 	void KeyUp(WPARAM);
 	void Paint(HWND hwnd);
@@ -628,7 +629,7 @@ void APIClass::KeyDown(WPARAM wp) {
 		shapenum =
 			shapelist->len ?
 			(shapenum ?
-			(shapenum < shapelist->data + shapelist->len ?
+			(shapenum+1 < shapelist->data + shapelist->len ?
 				shapenum + 1 : 0)
 				: shapelist->data)
 			: 0;
@@ -1408,6 +1409,7 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 }
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	switch (msg) {
+	case WM_KILLFOCUS:api->KillFocus(); return 0;
 	case WM_KEYDOWN:api->KeyDown(wp); return 0;
 	case WM_KEYUP:api->KeyUp(wp); return 0;
 	case WM_SIZE:api->OnSize(wp); return 0;
