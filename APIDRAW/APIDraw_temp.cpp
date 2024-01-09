@@ -48,13 +48,11 @@ struct ShapeList {
 	struct ShapeData {
 		RECT rt;
 		union {
-			struct {
-				POINT* point;
-				USHORT type;
-			};
+			POINT* point;
 			ShapeText* t;
 			BYTE* image;
 		};
+		USHORT type;
 		COLORREF linecolor;
 		COLORREF planecolor;
 		COLORREF planecolor2;
@@ -257,7 +255,7 @@ private:
 	POINT point[10];
 	HBITMAP hBuffer;
 	UCHAR point_idx;
-	
+
 	bool pointmode = false;
 	bool isctrl = false, isshift = false;
 	inline void DrawOneTrack(HDC hdc, long x, long y) {
@@ -555,6 +553,7 @@ public:
 		}
 		Set_DialogEnable();
 	}
+	//속성창 스태틱 컨트롤 수치
 	void Set_StaticText(ShapeList::ShapeData* shape) {
 		wchar_t str[128];
 		wsprintf(str, L"%d", shape->thick);
@@ -565,7 +564,7 @@ public:
 		SetWindowText(hwnd_static[2], str);
 
 	}
-	void SetDialogControl() {
+	void SetDialogControl() {//속성 창 컨트롤 초기화
 		if (!IsWindow(dialog_hwnd))return;
 		auto shape = shapenum ? shapenum : GetTempShape();
 		dlg_radio[0].Set(false);
@@ -620,16 +619,16 @@ void APIClass::KeyDown(WPARAM wp) {
 
 	RECT trt;
 
-	if (wp==VK_DELETE) {
+	if (wp == VK_DELETE) {
 		SendMessage(api_hwnd, WM_COMMAND, isctrl ? Menu_Clear : Menu_Delete, 0);
 		return;
 	}
-	
-	else if (wp==VK_TAB) {
+
+	else if (wp == VK_TAB) {
 		shapenum =
 			shapelist->len ?
 			(shapenum ?
-			(shapenum+1 < shapelist->data + shapelist->len ?
+			(shapenum + 1 < shapelist->data + shapelist->len ?
 				shapenum + 1 : 0)
 				: shapelist->data)
 			: 0;
@@ -660,12 +659,12 @@ void APIClass::KeyDown(WPARAM wp) {
 		SendMessage(api_hwnd, WM_COMMAND, DrawType_Polygon, 0);
 		return;
 	case'P':
-		if(isctrl)
+		if (isctrl)
 			SendMessage(api_hwnd, WM_COMMAND, Menu_Prop, 0);
 		return;
 	}
 	if (!shapenum)return;
-	
+
 	trt = shapenum->rt;
 	if (!isshift) {
 		if (wp == VK_LEFT) {
@@ -900,6 +899,13 @@ void APIClass::LButtonUp() {
 	isDrag = 0;
 	ReleaseCapture();
 }
+inline Color SetColor2(WORD alpha, DWORD color) {
+	return Color(alpha,
+		GetRValue(color),
+		GetGValue(color),
+		GetBValue(color)
+	);
+}
 void APIClass::Paint(HWND hwnd) {
 	PAINTSTRUCT ps;
 	HDC hdc = BeginPaint(hwnd, &ps);
@@ -939,7 +945,7 @@ void APIClass::Paint(HWND hwnd) {
 	Brush* allbrush;
 	Point p[10];
 
-	gp.DrawEllipse(&gpen, 10, 10, 200, 200);
+	//gp.DrawEllipse(&gpen, 10, 10, 200, 200);
 	gp.SetSmoothingMode(SmoothingModeAntiAlias);
 	Gdiplus::Rect grt;
 	for (auto d = shapelist->data; d != shapelist->data + shapelist->len; d++) {
@@ -952,13 +958,11 @@ void APIClass::Paint(HWND hwnd) {
 		grt.Y = rt->top;
 		grt.Width = rt->right - rt->left;
 		grt.Height = rt->bottom - rt->top;
-		gpen.SetColor(Color(d->alpha * (d->thick ? 1 : 0),
-			GetRValue(d->linecolor),
-			GetGValue(d->linecolor),
-			GetBValue(d->linecolor)
-		));
-		gpen.SetStartCap(LineCapRoundAnchor);
-		gpen.SetEndCap(LineCapArrowAnchor);
+		gpen.SetColor(
+			SetColor2(d->alpha * (d->thick ? 1 : 0), d->linecolor)
+		);
+		//pen.SetStartCap(LineCapRoundAnchor);
+		//gpen.SetEndCap(LineCapArrowAnchor);
 
 		gpen.SetDashStyle((DashStyle)d->linetype);
 		gpen.SetWidth(d->thick);
@@ -970,39 +974,22 @@ void APIClass::Paint(HWND hwnd) {
 			}
 			else if (d->brushmode == Brush_Plane) {
 				gbrush.SetColor(
-					Color(d->alpha, GetRValue(d->planecolor),
-						GetGValue(d->planecolor),
-						GetBValue(d->planecolor))
+					SetColor2(d->alpha,d->planecolor)
 				);
 			}
 			else if (d->brushmode == Brush_Hatch) {
 				allbrush = new HatchBrush(
 					(HatchStyle)d->brushtype,
-					Color(d->alpha,
-						GetRValue(d->planecolor),
-						GetGValue(d->planecolor),
-						GetBValue(d->planecolor)
-					),
-					Color(d->alpha,
-						GetRValue(d->planecolor2),
-						GetGValue(d->planecolor2),
-						GetBValue(d->planecolor2)
-					));
+					SetColor2(d->alpha, d->planecolor),
+					SetColor2(d->alpha, d->planecolor2));
 			}
 			else if (d->brushmode == Brush_Grad) {
 				if (d->brushtype < 4) {
 					allbrush = new LinearGradientBrush(
 						grt,
-						Color(d->alpha,
-							GetRValue(d->planecolor),
-							GetGValue(d->planecolor),
-							GetBValue(d->planecolor)
-						),
-						Color(d->alpha,
-							GetRValue(d->planecolor2),
-							GetGValue(d->planecolor2),
-							GetBValue(d->planecolor2)
-						), d->brushtype * 90.0f
+						SetColor2(d->alpha, d->planecolor),
+						SetColor2(d->alpha, d->planecolor2),
+						d->brushtype * 90.0f
 					);
 				}
 				else {
@@ -1022,29 +1009,13 @@ void APIClass::Paint(HWND hwnd) {
 					auto pathbrush = new PathGradientBrush(&path);
 					Color c1, c2;
 					if (d->brushtype == 4) {
-						c1.SetValue(Color::MakeARGB(d->alpha,
-							GetRValue(d->planecolor),
-							GetGValue(d->planecolor),
-							GetBValue(d->planecolor)
-						));
-						c2.SetValue(Color::MakeARGB(d->alpha,
-							GetRValue(d->planecolor2),
-							GetGValue(d->planecolor2),
-							GetBValue(d->planecolor2)
-						));
+						c1 = SetColor2(d->alpha, d->planecolor);
+						c2 = SetColor2(d->alpha, d->planecolor2);
 
 					}
 					else {
-						c2.SetValue(Color::MakeARGB(d->alpha,
-							GetRValue(d->planecolor),
-							GetGValue(d->planecolor),
-							GetBValue(d->planecolor)
-						));
-						c1.SetValue(Color::MakeARGB(d->alpha,
-							GetRValue(d->planecolor2),
-							GetGValue(d->planecolor2),
-							GetBValue(d->planecolor2)
-						));
+						c2= SetColor2(d->alpha, d->planecolor);
+						c1 = SetColor2(d->alpha, d->planecolor2);
 					}
 					pathbrush->SetCenterColor(c1);
 					Color cols[] = { c2 };
@@ -1418,7 +1389,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	case WM_PAINT:api->Paint(hwnd); return 0;
 	case WM_MOUSEMOVE:api->MouseMove(LOWORD(lp), HIWORD(lp)); return 0;
 		return 0;
-	//case WM_CHAR:api->OnChar(wp); return 0;
+		//case WM_CHAR:api->OnChar(wp); return 0;
 	case WM_LBUTTONDOWN:
 		api->LButtonDown(LOWORD(lp), HIWORD(lp)); return 0;
 	case WM_LBUTTONUP:
