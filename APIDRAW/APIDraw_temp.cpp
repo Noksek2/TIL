@@ -1068,12 +1068,10 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 	case DrawType_Circle:
 	case DrawType_Square:
 	case DrawType_Line:
+	case DrawType_Text:
+	case DrawType_Bitmap:
 		drawtype = type;
 		Set_RadioPlaneEnable(drawtype != DrawType_Line);
-		break;
-	case DrawType_Text:
-		break;
-	case DrawType_Bitmap:
 		break;
 	case Menu_FarForward:
 		if (drawtype == DrawType_None && shapenum) {
@@ -1146,13 +1144,13 @@ void APIClass::RButtonUp(long x, long y) {
 		hpop = CreatePopupMenu();
 		hsubmenu = CreatePopupMenu();
 		ClientToScreen(api_hwnd, &point);
-		AppendMenu(hpop, MF_STRING, DrawType_None, L"선택");
-		AppendMenu(hpop, MF_STRING, DrawType_Circle, L"원");
-		AppendMenu(hpop, MF_STRING, DrawType_Square, L"사각형");
-		AppendMenu(hpop, MF_STRING, DrawType_Line, L"직선");
-		AppendMenu(hpop, MF_STRING, DrawType_Polygon, L"다각형");
-		AppendMenu(hpop, MF_STRING, DrawType_Text, L"텍스트");
-		AppendMenu(hpop, MF_STRING, DrawType_Bitmap, L"이미지");
+		AppendMenu(hpop, MF_STRING, DrawType_None, L"선택\t1");
+		AppendMenu(hpop, MF_STRING, DrawType_Circle, L"원\t2");
+		AppendMenu(hpop, MF_STRING, DrawType_Square, L"사각형\t3");
+		AppendMenu(hpop, MF_STRING, DrawType_Line, L"직선\t4");
+		AppendMenu(hpop, MF_STRING, DrawType_Polygon, L"다각형\t5");
+		AppendMenu(hpop, MF_STRING, DrawType_Text, L"텍스트\t6");
+		AppendMenu(hpop, MF_STRING, DrawType_Bitmap, L"이미지\t7");
 		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
 
 		AppendMenu(hpop, MF_STRING | MF_POPUP, (UINT_PTR)hsubmenu, L"정렬/삭제");
@@ -1268,9 +1266,9 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	}
 
 	dlg_combo_grad.Add(L"→");
+	dlg_combo_grad.Add(L"↓");
 	dlg_combo_grad.Add(L"←");
 	dlg_combo_grad.Add(L"↑");
-	dlg_combo_grad.Add(L"↓");
 	dlg_combo_grad.Add(L"원형1");
 	dlg_combo_grad.Add(L"원형2");
 
