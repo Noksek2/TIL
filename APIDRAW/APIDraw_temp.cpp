@@ -19,10 +19,10 @@ using namespace Gdiplus;
 enum {
 
 	DrawType_None, DrawType_Circle, DrawType_Square, DrawType_Line,
-	Menu_Delete, Menu_Clear, Menu_Prop,
+	Menu_Delete, Menu_Clear, Menu_Prop,Menu_ImgOption,Menu_TextOption,
 	Menu_Forward, Menu_FarForward, Menu_Backward, Menu_FarBack,
-	Menu_Exit, ID_Scroll, DrawType_Polygon, DrawType_Text,
-	DrawType_Bitmap
+	Menu_Exit, ID_Scroll, DrawType_Polygon, 
+	DrawType_Bitmap,DrawType_Meta, DrawType_Text,
 };
 enum {
 	DID_ScrollLine = 4, DID_ComboLine, DID_BtnSet,
@@ -39,6 +39,8 @@ inline int LP_GetMouseX(LPARAM lp) { return LOWORD(lp); }
 inline int LP_GetMouseY(LPARAM lp) { return HIWORD(lp); }
 
 LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+LRESULT CALLBACK ImgDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 struct ShapeText {
 	WCHAR fontface[32];
 	WCHAR* text;
@@ -79,14 +81,18 @@ struct ShapeList {
 
 	UINT capa, len;
 	ShapeList() {
-		capa = 10; len = 0; tempshape.thick = 1;
+		capa = 20; len = 0; tempshape.thick = 1;
 		data = (ShapeData*)malloc(sizeof(ShapeData) * capa);
 	}
-	void append(USHORT type, RECT* mrt) {
+	void append(USHORT type, RECT* mrt,BYTE* buf=0,DWORD size=0) {
 		if (len >= capa)return;
 		data[len] = tempshape;
 		data[len].type = type;
 		if (type != DrawType_Line)AdjustRect(mrt);
+		if (type == DrawType_Bitmap|| type == DrawType_Meta) {
+			data[len].image = buf;
+			data[len].point_len = size;
+		}
 		memcpy(&data[len].rt, mrt, sizeof(RECT));
 
 
@@ -162,6 +168,9 @@ struct ShapeList {
 			free(d->point);
 			d->point = 0;
 		}
+		else if (d->type >= DrawType_Bitmap) {
+			if (d->image) { free(d->image); d->image = 0; }
+		}
 		for (ShapeData* p = d + 1; p < data + len; p++) {
 			*(p - 1) = *p;
 		}
@@ -177,6 +186,8 @@ struct ShapeList {
 				free(p->point);
 				p->point = 0;
 			}
+			else if (p->type >= DrawType_Bitmap)
+				if (p->image) { free(p->image); p->image = 0; }
 		}
 		len = 0;
 	}
@@ -335,7 +346,7 @@ private:
 		case DrawType_Circle:
 			Ellipse(hdc, rt->left, rt->top, rt->right, rt->bottom);
 			break;
-		case DrawType_Square:
+		case DrawType_Square:case DrawType_Bitmap:case DrawType_Meta:case DrawType_Text:
 			Rectangle(hdc, rt->left, rt->top, rt->right, rt->bottom);
 			break;
 		case DrawType_Polygon:
@@ -378,7 +389,7 @@ private:
 		IDC_SIZEWE,IDC_SIZENESW,IDC_SIZENS,IDC_SIZENWSE };
 public:
 	ShapeList* shapelist;
-	HWND api_hwnd, dialog_hwnd;
+	HWND api_hwnd, dialog_hwnd,dlg2_hwnd;
 	HINSTANCE g_hin;
 	ShapeList::ShapeData* shapenum;
 	USHORT isDrag;
@@ -393,6 +404,7 @@ public:
 		return &shapelist->tempshape;
 	}
 	APIClass(HINSTANCE hin) :g_hin(hin) {
+		dlg2_hwnd = 0;
 		gridw = 10;
 		isgrid = true;
 
@@ -465,7 +477,8 @@ public:
 		}
 		PostQuitMessage(0);
 	}
-
+	void InsertBitmap(long, long);
+	void InsertMeta(long, long);
 	void Set_ShapeColor(bool isline = false) {
 		if (ChooseColor(&col)) {
 			if (shapenum) {
@@ -658,7 +671,20 @@ void APIClass::KeyDown(WPARAM wp) {
 	case '5':
 		SendMessage(api_hwnd, WM_COMMAND, DrawType_Polygon, 0);
 		return;
+	case '6':
+		SendMessage(api_hwnd, WM_COMMAND, DrawType_Bitmap, 0);
+		return;
+	case '7':
+		SendMessage(api_hwnd, WM_COMMAND, DrawType_Meta, 0);
+		return;
+	case '8':
+		SendMessage(api_hwnd, WM_COMMAND, DrawType_Text, 0);
+		return;
 	case'P':
+		if (isctrl)
+			SendMessage(api_hwnd, WM_COMMAND, Menu_Prop, 0);
+		return;
+	case'I':
 		if (isctrl)
 			SendMessage(api_hwnd, WM_COMMAND, Menu_Prop, 0);
 		return;
@@ -669,20 +695,20 @@ void APIClass::KeyDown(WPARAM wp) {
 	if (!isshift) {
 		if (wp == VK_LEFT) {
 			OffsetRect(&trt, -m, 0); action = true;
-			shapelist->setPolyOffset(shapenum, -m, 0);
+			if(shapenum->type==DrawType_Polygon)shapelist->setPolyOffset(shapenum, -m, 0);
 		}
 		else if (wp == VK_RIGHT) {
 			action = true; OffsetRect(&trt, +m, 0);
-			shapelist->setPolyOffset(shapenum, +m, 0);
+			if (shapenum->type == DrawType_Polygon)shapelist->setPolyOffset(shapenum, +m, 0);
 		}
 		if (wp == VK_UP) {
 			OffsetRect(&trt, 0, -m);
-			shapelist->setPolyOffset(shapenum, 0, -m);
+			if (shapenum->type == DrawType_Polygon)shapelist->setPolyOffset(shapenum, 0, -m);
 			action = true;
 		}
 		else if (wp == VK_DOWN) {
 			OffsetRect(&trt, 0, m);
-			shapelist->setPolyOffset(shapenum, 0, m);
+			if (shapenum->type == DrawType_Polygon)shapelist->setPolyOffset(shapenum, 0, m);
 			action = true;
 		}
 
@@ -761,8 +787,111 @@ END:;
 	SetDialogControl();
 	SetCapture(api_hwnd);
 }
+void APIClass::InsertBitmap(long x, long y) {
+	OPENFILENAME ofn = { 0 };
+	wchar_t filename[256] = L"";
+	RECT rt;
+	HANDLE hfile;
+	DWORD filesize, dwread;
+	BYTE* buffer;
+	BITMAPINFOHEADER* ih;
+
+	ofn.hwndOwner = api_hwnd;
+	ofn.lpstrFilter = L"비트맵 파일(.bmp)\0*.bmp\0모든 파일(*.*)\0*.*\0";
+	ofn.lpstrFile = filename;
+	ofn.nMaxFile = 256;
+	ofn.lStructSize = sizeof(OPENFILENAME);
+	if (GetOpenFileName(&ofn) != 0) {
+		hfile = CreateFile(filename, GENERIC_READ, 0, 0,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+		if (hfile != INVALID_HANDLE_VALUE) {
+			filesize = GetFileSize(hfile, 0);
+			buffer = (BYTE*)malloc(filesize);
+			ReadFile(hfile, buffer, filesize, &dwread, 0);
+			CloseHandle(hfile);
+			if (*buffer != 0x42 || *(buffer + 1) != 0x4d) {
+				free(buffer);
+				return;
+			}
+			ih = (BITMAPINFOHEADER*)
+				(buffer+sizeof(BITMAPFILEHEADER));
+			rt.left = x; rt.top = y;
+			rt.right = x + ih->biWidth;
+			rt.bottom = y + ih->biHeight;
+
+			
+			shapelist->append(DrawType_Bitmap,&rt,buffer,filesize);
+			shapenum = shapelist->data + (shapelist->len - 1);
+			InvalidateRect(api_hwnd, 0, false);
+		}
+	}
+}
+void APIClass::InsertMeta(long x, long y) {
+	OPENFILENAME ofn = { 0 };
+	wchar_t filename[256] = L"";
+	RECT rt;
+	SetRect(&rt, mx, my, oldx, oldy);
+
+
+	HANDLE hfile;
+	DWORD filesize, dwread;
+	BYTE* buffer;
+	BITMAPINFOHEADER* ih;
+
+	ofn.hwndOwner = api_hwnd;
+	ofn.lpstrFilter = L"메타 파일(.wmf)\0*.wmf\0모든 파일(*.*)\0*.*\0";
+	ofn.lpstrFile = filename;
+	ofn.nMaxFile = 256;
+	ofn.lStructSize = sizeof(OPENFILENAME);
+	if (GetOpenFileName(&ofn) != 0) {
+		hfile = CreateFile(filename, GENERIC_READ, 0, 0,
+			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+		if (hfile != INVALID_HANDLE_VALUE) {
+			filesize = GetFileSize(hfile, 0);
+			buffer = (BYTE*)malloc(filesize);
+			ReadFile(hfile, buffer, filesize, &dwread, 0);
+			CloseHandle(hfile);
+			if (*((DWORD*)buffer) != 0x9ac6cdd7) {
+				free(buffer);
+				return;
+			}
+			SetRect(&rt, x, y, x + 100, y + 100);
+			
+			shapelist->append(DrawType_Meta,&rt,buffer,filesize);
+			shapenum = shapelist->data + (shapelist->len - 1);
+			InvalidateRect(api_hwnd, 0, false);
+		}
+	}
+}
+
+void PlayPlaceableMeta(HDC hdc, BYTE* pMeta, int len, RECT* rt){
+	HENHMETAFILE hEnh;
+	PAPMHEADER pHeader = (PAPMHEADER)pMeta;
+	METAFILEPICT mp;
+
+	if (pHeader->nKey == 0x9ac6cdd7) {
+		mp.mm = MM_ANISOTROPIC;
+		mp.xExt = pHeader->bbox.Right - pHeader->bbox.Left;
+		mp.xExt = (mp.xExt * 2540l) / (DWORD)(pHeader->inch);
+		mp.yExt = pHeader->bbox.Bottom - pHeader->bbox.Top;
+		mp.yExt = (mp.yExt * 2540l) / (DWORD)(pHeader->inch);
+		mp.hMF = NULL;
+
+		hEnh = SetWinMetaFileBits(len, &(pMeta[sizeof(APMHEADER)]), hdc, &mp);
+
+		PlayEnhMetaFile(hdc, hEnh, rt);
+		DeleteEnhMetaFile(hEnh);
+
+	}
+
+}
+
 
 void APIClass::MouseMove(long x, long y) {
+	long mun = -1;
+	if (x < 0) {
+		
+	}
 	AdjustToGrid(x, y);
 	long ex = x, ey = y;
 	HDC hdc;
@@ -782,7 +911,8 @@ void APIClass::MouseMove(long x, long y) {
 			Ellipse(hdc, mx, my, oldx, oldy);
 			Ellipse(hdc, mx, my, ex, ey);
 			break;
-		case DrawType_Square:
+		case DrawType_Square:case DrawType_Text:case DrawType_Bitmap:
+		case DrawType_Meta:
 			Rectangle(hdc, mx, my, oldx, oldy);
 			Rectangle(hdc, mx, my, ex, ey);
 			break;
@@ -849,7 +979,6 @@ void APIClass::LButtonUp() {
 			{
 				if ((mx == oldx && my == oldy) ||
 					(oldx == point[0].x && oldy == point[0].y)) goto ADD;
-
 			}
 			else {
 				point[0].x = mx;
@@ -873,9 +1002,18 @@ void APIClass::LButtonUp() {
 			point_idx = 0;
 			isDrag = 0;
 
-			InvalidateRect(api_hwnd, 0, true);
+			InvalidateRect(api_hwnd, 0, false);
 		}
-							 return;
+		return;
+		case DrawType_Bitmap:
+			InsertBitmap(mx, my);
+			break;
+		case DrawType_Meta:
+			InsertMeta(mx, my);
+			break;
+		case DrawType_Text:
+			//InsertBitmap(mx, my);
+			break;
 		default:
 			if (abs((mx - oldx) * (my - oldy)) > 100) {
 				SetRect(&rt, mx, my, oldx, oldy);
@@ -884,20 +1022,19 @@ void APIClass::LButtonUp() {
 			}
 			break;
 		}
-		InvalidateRect(api_hwnd, 0, true);
 	}
 	else if (isDrag == Drag_Move) {
 		//SetRect(&shapenum->rt,mx, my;
-		InvalidateRect(api_hwnd, 0, true);
 	}
 	else if (isDrag == Drag_Size) {
 		tracknum = 0;
 		if (shapenum->type != DrawType_Line)
 			shapelist->AdjustRect(&shapenum->rt);
-		InvalidateRect(api_hwnd, 0, true);
+		
 	}
 	isDrag = 0;
 	ReleaseCapture();
+	InvalidateRect(api_hwnd, 0, false);
 }
 inline Color SetColor2(WORD alpha, DWORD color) {
 	return Color(alpha,
@@ -944,12 +1081,13 @@ void APIClass::Paint(HWND hwnd) {
 	SolidBrush gbrush(basiccol);
 	Brush* allbrush;
 	Point p[10];
-
+	Image I(L"D:/ext.jpg");
 	//gp.DrawEllipse(&gpen, 10, 10, 200, 200);
 	gp.SetSmoothingMode(SmoothingModeAntiAlias);
 	Gdiplus::Rect grt;
 	for (auto d = shapelist->data; d != shapelist->data + shapelist->len; d++) {
-		for (int i = 0; i < d->point_len; i++) {
+		if (d->type == DrawType_Polygon)
+			for (int i = 0; i < d->point_len; i++) {
 			p[i].X = d->point[i].x;
 			p[i].Y = d->point[i].y;
 		}
@@ -1042,6 +1180,30 @@ void APIClass::Paint(HWND hwnd) {
 			case DrawType_Line:
 				gp.DrawLine(&gpen, Point(rt->left, rt->top), Point(rt->right, rt->bottom));
 				break;
+			case DrawType_Bitmap: {
+				BITMAPFILEHEADER* fh;
+				BITMAPINFOHEADER* ih;
+				BYTE* pbuf;
+				fh = (BITMAPFILEHEADER*)d->image;
+				pbuf = (PBYTE)fh + fh->bfOffBits;
+				ih = (BITMAPINFOHEADER*)((PBYTE)fh + sizeof(BITMAPFILEHEADER));
+				long bx = ih->biWidth;
+				long by = ih->biHeight;
+				StretchDIBits(hmemdc,
+					d->rt.left, d->rt.top,
+					d->rt.right - d->rt.left,
+					d->rt.bottom - d->rt.top, 0, 0,
+					bx, by, pbuf,
+					(BITMAPINFO*)ih,
+					DIB_RGB_COLORS, SRCCOPY
+				);
+			}break;
+			case DrawType_Meta:
+				PlayPlaceableMeta(hmemdc,
+					d->image,
+					d->point_len,
+					&d->rt);
+				break;
 			}
 		}
 		if (d->brushmode >= Brush_Hatch)delete allbrush;
@@ -1070,8 +1232,9 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 	case DrawType_Line:
 	case DrawType_Text:
 	case DrawType_Bitmap:
+	case DrawType_Meta:
 		drawtype = type;
-		Set_RadioPlaneEnable(drawtype != DrawType_Line);
+		Set_RadioPlaneEnable((drawtype != DrawType_Line)&&(drawtype!=DrawType_Bitmap)&&(drawtype!=DrawType_Meta));
 		break;
 	case Menu_FarForward:
 		if (drawtype == DrawType_None && shapenum) {
@@ -1115,6 +1278,24 @@ void APIClass::Command(USHORT type, WPARAM wp) {
 			this->col.hwndOwner = dialog_hwnd;
 		}
 
+	}break;
+	case Menu_ImgOption: {
+		if (!IsWindow(dlg2_hwnd)) {
+			WNDCLASSEXW wc = { 0 };
+			wc.cbSize = sizeof(WNDCLASSEXW);
+			wc.lpfnWndProc = (WNDPROC)ImgDialogProc;
+			wc.hInstance = g_hin;
+			wc.hbrBackground = GetSysColorBrush(COLOR_3DFACE);
+			wc.lpszClassName = L"DialogClass2";
+
+			RegisterClassExW(&wc);
+
+			dlg2_hwnd = CreateWindowExW(WS_EX_DLGMODALFRAME,//| WS_EX_TOPMOST,
+				L"DialogClass2", L"이미지 속성",
+				WS_VISIBLE | WS_SYSMENU | WS_CAPTION, 100, 100, 400, 300,
+				api_hwnd, 0, g_hin, NULL);
+		}
+
 	}
 				  break;
 	case Menu_Delete:
@@ -1142,17 +1323,22 @@ void APIClass::RButtonUp(long x, long y) {
 	//if (isDrag)SendMessage(api_hwnd, WM_LBUTTONUP, 0, 0);
 	if (!isDrag) {
 		hpop = CreatePopupMenu();
-		hsubmenu = CreatePopupMenu();
+		
 		ClientToScreen(api_hwnd, &point);
-		AppendMenu(hpop, MF_STRING, DrawType_None, L"선택\t1");
-		AppendMenu(hpop, MF_STRING, DrawType_Circle, L"원\t2");
-		AppendMenu(hpop, MF_STRING, DrawType_Square, L"사각형\t3");
-		AppendMenu(hpop, MF_STRING, DrawType_Line, L"직선\t4");
-		AppendMenu(hpop, MF_STRING, DrawType_Polygon, L"다각형\t5");
-		AppendMenu(hpop, MF_STRING, DrawType_Text, L"텍스트\t6");
-		AppendMenu(hpop, MF_STRING, DrawType_Bitmap, L"이미지\t7");
-		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
+		HMENU hsubmenu2 = CreatePopupMenu();
+		AppendMenu(hpop, MF_STRING | MF_POPUP, (UINT_PTR)hsubmenu2, L"추가");
 
+		AppendMenu(hsubmenu2, MF_STRING, DrawType_None, L"선택\t1");
+		AppendMenu(hsubmenu2, MF_STRING, DrawType_Circle, L"원\t2");
+		AppendMenu(hsubmenu2, MF_STRING, DrawType_Square, L"사각형\t3");
+		AppendMenu(hsubmenu2, MF_STRING, DrawType_Line, L"직선\t4");
+		AppendMenu(hsubmenu2, MF_STRING, DrawType_Polygon, L"다각형\t5");
+		AppendMenu(hsubmenu2, MF_SEPARATOR, 0, 0);
+		AppendMenu(hsubmenu2, MF_STRING, DrawType_Bitmap, L"이미지\t6");
+		AppendMenu(hsubmenu2, MF_STRING, DrawType_Meta, L"메타 파일\t7");
+		AppendMenu(hsubmenu2, MF_STRING, DrawType_Text, L"텍스트\t8");
+
+		hsubmenu = CreatePopupMenu();
 		AppendMenu(hpop, MF_STRING | MF_POPUP, (UINT_PTR)hsubmenu, L"정렬/삭제");
 		AppendMenu(hsubmenu, MF_STRING, Menu_Forward, L"앞으로 이동");
 		AppendMenu(hsubmenu, MF_STRING, Menu_FarForward, L"맨 앞으로 이동");
@@ -1163,7 +1349,8 @@ void APIClass::RButtonUp(long x, long y) {
 		AppendMenu(hsubmenu, MF_STRING, Menu_Clear, L"전체 삭제\tCtrl+Del");
 
 		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
-		AppendMenu(hpop, MF_STRING, Menu_Prop, L"도형 속성");
+		AppendMenu(hpop, MF_STRING, Menu_Prop, L"도형 속성\tCtrl+P");
+		AppendMenu(hpop, MF_STRING, Menu_ImgOption, L"이미지 속성\tCtrl+I");
 		AppendMenu(hpop, MF_SEPARATOR, 0, 0);
 		AppendMenu(hpop, MF_STRING, Menu_Exit, L"QUIT");
 		CheckMenuItem(hpop, drawtype, MF_BYCOMMAND | MF_CHECKED);
@@ -1180,8 +1367,6 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 		/*if (hfont == 0)hfont = CreateFont(22, 0, 0, 0, 0, 0, 0, 0, HANGEUL_CHARSET,
 			0, 0, 0, 0, L"맑은 고딕");*/
 	{
-
-
 		USHORT y = 100;
 		CreateWindowW(L"button", L"선 색상",
 			WS_VISIBLE | WS_CHILD,
@@ -1376,6 +1561,17 @@ LRESULT CALLBACK DialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 	}
 	return (DefWindowProcW(hwnd, msg, wParam, lParam));
 }
+LRESULT CALLBACK ImgDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+	switch (msg) {
+	case WM_CREATE:
+	{
+	}break;
+	case WM_CLOSE:DestroyWindow(hwnd);
+		break;
+	}
+	return(DefWindowProcW(hwnd, msg, wParam, lParam));
+}
+#include <windowsx.h>
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	switch (msg) {
 	case WM_KILLFOCUS:api->KillFocus(); return 0;
@@ -1385,14 +1581,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	case WM_CREATE:api->Create(hwnd); return 0;
 	case WM_COMMAND:api->Command(LOWORD(wp), wp); return 0;
 	case WM_PAINT:api->Paint(hwnd); return 0;
-	case WM_MOUSEMOVE:api->MouseMove(LOWORD(lp), HIWORD(lp)); return 0;
+	case WM_MOUSEMOVE:api->MouseMove((short)LOWORD(lp), (short)HIWORD(lp)); return 0;
 		return 0;
 		//case WM_CHAR:api->OnChar(wp); return 0;
 	case WM_LBUTTONDOWN:
-		api->LButtonDown(LOWORD(lp), HIWORD(lp)); return 0;
+		api->LButtonDown((short)LOWORD(lp), (short)HIWORD(lp)); return 0;
 	case WM_LBUTTONUP:
 		api->LButtonUp(); return 0;
-	case WM_RBUTTONUP:api->RButtonUp(LOWORD(lp), HIWORD(lp));
+	case WM_RBUTTONUP:api->RButtonUp((short)LOWORD(lp), (short)HIWORD(lp));
 		return 0;
 	case WM_SETCURSOR:
 		if (!api->OnSetCursor())return(DefWindowProc(hwnd, WM_SETCURSOR, wp, lp));
@@ -1404,7 +1600,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 	return (DefWindowProc(hwnd, msg, wp, lp));
 }
 int WINAPI WinMain(HINSTANCE hin, HINSTANCE, LPSTR, int) {
-	//use when memory leaked 
+	//use it when memory leaked 
 	//_CrtSetBreakAlloc(160);
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 	HWND hwnd;
