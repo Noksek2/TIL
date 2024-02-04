@@ -1,5 +1,17 @@
 #pragma once
 #include <Windows.h>
+#pragma pack(push)
+#pragma pack(2)
+typedef struct
+{
+	DWORD     nKey;
+	WORD      hmf;
+	SMALL_RECT   bbox;
+	WORD      inch;
+	DWORD     nReserved;
+	WORD      checkSum;
+} APMHEADER, * PAPMHEADER;
+#pragma pack(pop)
 class CScroll {
 public:
 	WORD pos;
