@@ -1225,6 +1225,10 @@ void APIClass::Paint(HWND hwnd) {
 					d->point_len,
 					&d->rt);
 				break;
+			case DrawType_Text: 
+				
+				
+				break;
 			}
 		}
 		if (d->brushmode >= Brush_Hatch)delete allbrush;
@@ -1633,7 +1637,6 @@ LRESULT CALLBACK ImgDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 		CreateWindow(L"button", L"취소", WS_CHILD | WS_VISIBLE
 			, 290, y, 80, 25, hwnd, (HMENU)ImgDlg_BtnCancel, 0, 0);
 		y += 30;
-
 	}break;
 	case WM_COMMAND:
 		switch (LOWORD(wParam)) {
@@ -1732,8 +1735,19 @@ LRESULT CALLBACK TxtDialogProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 			break;
 		case TxtDlg_Font:
 		{
+			CHOOSEFONT chfont;
+			LOGFONT lf;
+			memset(&chfont, 0, sizeof(CHOOSEFONT));
+			chfont.lStructSize = sizeof(CHOOSEFONT);
+			chfont.hwndOwner = hwnd;
+			chfont.lpLogFont = &lf;
+			chfont.Flags = CF_EFFECTS | CF_SCREENFONTS;
+			if (ChooseFont(&chfont)) {
+				
+			}
 		}
 			break;
+
 			/*
 		case TxtDlg_Edit1:
 		switch(HIWORD(wParam)){
