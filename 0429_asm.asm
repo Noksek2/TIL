@@ -1,4 +1,5 @@
 #1
+;loop until number
 main segment
     assume cs:main
     mov cl,0
