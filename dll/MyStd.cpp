@@ -122,22 +122,27 @@ namespace MyStd {
 			_isDyn=isDynamic;
 			_isBasic = isBasic; 
 			if(!_isDyn){
-				if (_isBasic)_v = MyMalloc(T, _size);
-				else _v = new T[_size];
+				if (_isBasic)_v = MyMalloc(T, sz);
+				else _v = new T[sz];
 
 				_size = _capa=sz;
 			}
 			else{
 				_size = sz;
-				_capa = _size;
+				for (_capa = 1; _capa < _size; _capa <<= 1);
+				
+				if (_isBasic)_v = MyMalloc(T, _capa);
+				else _v = new T[_capa];
 			}
 		}
 		const T operator[](size_t index) const {
-			if (index < _size)return _v[index];
-			return nullptr;
+			//if (index < _size)
+			return _v[index];
+			
 		}
 		T& operator[](size_t index) {
-			if (index < _size)return _v[index];
+			//if (index < _size)
+			return _v[index];
 		}
 		~MyArray() {
 			if (_v) {
@@ -146,32 +151,11 @@ namespace MyStd {
 					_v = 0;
 				}
 				else {
-					
+					delete[] _v;
+					_v = 0;
 				}
-			}delete[] _v;
-			_v = 0;
+			}
 		}
 		
 	};
 };
-using namespace MyStd;
-int main() {
-	char* s = "sdfa";
-	s = "asfsf";
-	SetInit();
-	MyString<wchar_t>mystr(L"뷁둥둥");
-	mystr.Print();
-
-	MyString<char>mstr("귁귁analdkf");
-		MyString<char> mstr2(mstr);
-		mstr2.Print();
-	mstr.Print();
-
-	MyArray<int>ints(30,false,false);
-	for (size_t i = 0; i < ints.Size(); i++) {
-		ints[i] = i+1;
-		printf("%d번 ", ints[i]);
-	}
-	
-	return 0;
-}
