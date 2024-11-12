@@ -1,3 +1,4 @@
+#pragma once
 #include <iostream>
 #include <Windows.h>
 #include <locale.h>
@@ -5,24 +6,23 @@
 #define TMP template<typename T>
 #define VTMP template<>
 #define MyMalloc(T,SZ) (T*)malloc(sizeof(T)*(SZ))
+#define MyCalloc(T,SZ) (T*)calloc(SZ,sizeof(T))
 #define MyRealloc(DAT,T,SZ) (T*)realloc(DAT,sizeof(T)*(SZ))
 
 namespace MyStd {
+	static wchar_t* ToUniStr(const char* buf, size_t len, bool isUTF8 = false) { 
+		size_t ulen = MultiByteToWideChar(isUTF8 ? CP_UTF8 : CP_ACP, 0, buf, len, 0, 0); 
+		wchar_t* ubuf = MyMalloc(wchar_t, ulen);
+		MultiByteToWideChar(isUTF8 ? CP_UTF8 : CP_ACP, 0, buf, len, ubuf, ulen); return ubuf; 
+	} 
+	static char* ToMultiStr(const wchar_t* ubuf, size_t ulen, bool isUTF8 = false) { 
+		size_t len = WideCharToMultiByte(isUTF8 ? CP_UTF8 : CP_ACP, 0, ubuf, -1, 0, 0, 0, 0); 
+		char* buf = MyMalloc(char, len);
+		WideCharToMultiByte(isUTF8 ? CP_UTF8 : CP_ACP, 0, ubuf, -1, buf, len, 0, 0); 
+		return buf;
+	}
 	static void SetInit() {
 		setlocale(LC_ALL, "kor");
-	}
-	wchar_t* ToUniStr(const char* buf, size_t len, bool isUTF8 = false) {
-		size_t ulen = MultiByteToWideChar(isUTF8 ? CP_UTF8 : CP_ACP, 0, buf, len, 0, 0);
-
-		wchar_t* ubuf = MyMalloc(wchar_t, ulen);
-		MultiByteToWideChar(isUTF8 ? CP_UTF8 : CP_ACP, 0, buf, len, ubuf, ulen);
-		return ubuf;
-	}
-	char* ToMultiStr(const wchar_t* ubuf, size_t ulen, bool isUTF8 = false) {
-		size_t len = WideCharToMultiByte(isUTF8 ? CP_UTF8 : CP_ACP, 0, ubuf, -1, 0, 0, 0, 0);
-		char* buf = MyMalloc(char, len);
-		WideCharToMultiByte(isUTF8 ? CP_UTF8 : CP_ACP, 0, ubuf, -1, buf, len, 0, 0);
-		return buf;
 	}
 	class MyFile {
 	private:
@@ -39,21 +39,54 @@ namespace MyStd {
 	protected:
 		T* _v;
 		size_t _size;//_size는 stack에선 건드리지 말아야 됨.
-		size_t _capa;
-		inline void _Alloc(size_t sz) { _size = sz; _v = MyMalloc(T, sz + 1); }
-		inline bool _Expand(size_t nowCapa, size_t expSize) {
-			return _ExpandTo(nowCapa, expSize + _size,isDouble);
+		size_t _capa;//용량
+		bool _isDouble,//재할당 2배
+			_isObj,//new 사용한 객체여부
+			_isDyn;//동적여부 (잘 안 씀)
+		inline void _Alloc(size_t sz = 4u, bool isD = true, bool isO=true,bool isStr = false) { 
+			_isObj = isO;
+			_isDouble = isD; 
+			if (_isDouble) {
+				_capa = 4u;
+				_ExpandTo(sz);
+			}
+			else _capa = sz;
+			if (isStr)_size = sz;
+			_v = MyCalloc(T, sz + (size_t)isStr); 
 		}
-		inline bool _ExpandTo(size_t nowCapa, size_t toSize) {
+		inline bool _Expand(size_t expSize) {
+			return _ExpandTo(expSize + _size);
+		}
+		inline bool _ExpandTo(size_t toSize) {
 			size_t tc;
 			bool flag = false;
-			for (tc = nowCapa; tc < toSize; tc <<= 1) {
+			for (tc = _capa; tc < toSize; tc <<= 1) {
 				flag = true;
 			}
-			_size = toSize; _capa = tc;
+			if(flag)printf("EXPAND : %d\n", tc);
+			_capa = tc;
 			return flag;
 		}
+		void _Realloc() {
+			if (_isObj)_ReallocObj(); 
+			else this->_v = MyRealloc(this->_v, T, this->_capa);
+		}
+		void _ReallocObj() {
+			auto buf = new T[this->_capa];
+			/*for (size_t s = 0u; s < this->_size; s++) {
+				buf[s] = this->_v[s];
+			}
+			this->_v = buf;*/
+			memcpy(buf, _v, sizeof(T) * this->_capa);
+			memset(_v, 0, sizeof(T) * this->_capa);
+			delete _v;
+			this->_v = buf;
+		}
 	public:
+		MyContain() {
+			puts("Contain");
+		}
+		
 		const T& operator[](size_t index) const {
 			//if (index < _size)
 			return this->_v[index];
@@ -73,64 +106,66 @@ namespace MyStd {
 		inline const T& At(size_t index) const {
 			return this->_v[index];
 		}
-		/*inline void Add(const T t) {
-			if (this->_size + 1 >= this->_capa)_Expand();
+		inline void Add(const T& t) {
+			if (this->_size + 1 >= this->_capa)_Expand(1);
 			this->_v[this->_size++] = t;
-		}*/
+		}
+		inline void AddSize(size_t sz) {
+			if (_Expand(this->capa, sz))_Realloc();
+			this->_size += sz;
+		}
+		inline void SetSize(size_t sz) {
+			if (_ExpandTo(this->capa, sz))_Realloc();
+			this->_size = sz;
+		}
+		void PrintInfo() {
+			printf("(%s) CAPA : %d SIZE : %d\n",typeid(this).name(),Capa(),Size());
+		}
 		virtual ~MyContain() { puts("~Contain"); }
 	};
 
 #define BASE MyContain<T>
 	class MyMultiStr : public MyContain<char> {
 	public:
-		MyMultiStr(size_t sz) {
-			_Alloc(sz);
+		MyMultiStr(size_t capa=4u,bool isD=false) {
+			_Alloc(capa,isD,true);
 		}
-		MyMultiStr(char* str, size_t sz) {
-			_Alloc(sz);
+		MyMultiStr(char* str, size_t sz=4u, bool isD = false) {
+			_Alloc(sz,isD,true); 
 			memcpy(_v, str, sizeof(char) * sz);
 		}
+		void Print() {
+			puts(_v);
+		}
 		virtual ~MyMultiStr() {
-			free(_v);
+			if (_v) { free(_v); _v = 0; }
 			puts("~multistr");
 		}
 	};
 	class MyUniStr :public MyContain<wchar_t> {
+	protected:
 	public:
-		MyUniStr(size_t sz) {
-			_Alloc(sz);
+		MyUniStr(size_t sz=4u,bool isD=false) {
+			_Alloc(sz,true); _isDouble = isD;
 		}
-		MyUniStr(const wchar_t* wstr, size_t sz) {
-			_Alloc(sz);
+		MyUniStr(const wchar_t* wstr, size_t sz=4u, bool isD = false) {
+			_Alloc(sz,true); _isDouble = isD;
 			memcpy(_v, wstr, sizeof(wchar_t) * sz);
 		}
+		void Print() {
+			_putws(_v);
+		}
 		virtual ~MyUniStr() {
-			free(_v);
+			if (_v) { free(_v); _v = 0; }
 			puts("~unistr");
 		}
 	};
 	TMP class MyArray : public MyContain<T> {
-	private:
-		bool _isDyn,_isDouble;
-		void _Realloc() {
-			this->_v=MyRealloc(this->_v, T, this->_capa);
-		}
+	protected:
 	public:
-		MyArray(size_t capa = 4U, bool isDynamic = true,bool isDouble=true) {
-			_size = 0u;
-			_isDouble = isDouble;
-
-			if (_isDyn = isDynamic)BASE::_ExpandTo(4u, capa);
-			else this->_capa = capa;
-			this->_v = MyMalloc(T, this->_capa);
-		}
-		void Add(const T t) {
-			if (BASE::_Expand(this->_capa, 1))_Realloc();
-			this->_v[this->_size++] = t;
-		}
-		inline void AddSize(size_t sz) {
-			if(BASE::_Expand(this->capa, sz))_Realloc();
-			_size += sz;
+		//capa:용량 isDynamic:가변/동적 isDouble:2배할당 isObj:객체
+		MyArray(size_t capa = 4U, bool isDynamic = true, bool isDouble = true, bool isObj=true) {
+			BASE::_Alloc(capa, isDouble, isObj);
 		}
 		virtual ~MyArray() {
 			if (this->_v) {
@@ -141,42 +176,20 @@ namespace MyStd {
 	};
 	TMP class MyObjArray : public MyContain<T> {
 	protected:
-		bool _isDyn,_isObj;
-		void _Realloc() {
-			auto buf= new T[this->_capa];
-			for (size_t s = 0u; s < this->_size; s++) {
-
-			}
-			this->_v = buf;
-		}
+		
 	public:
-		MyObjArray(size_t sz=4u, bool isObj=true,bool isDynamic = true) {
-			_isObj = isObj;
-			this->_v = 0; this->_size = this->_capa = 0;
-			_isDyn = isDynamic;
-			if (!_isDyn) {
-				this->_capa = sz;
-			}
-			else {
-				BASE::_ExpandTo(4u, sz);
-			}
-			this->_v = new T[this->_capa];
+		//capa:용량 isDynamic:가변/동적 
+		MyObjArray(size_t capa= 4u, bool isDynamic = true) {
+			BASE::_Alloc(capa);
 		}
-		void Add(const T t) {
-			if (BASE::_Expand(this->_capa, 1))_Realloc();
-			this->_v[this->_size++] = t;
-		}
-		void AddSize() {
-		}
-		void SetSize(){}
 		virtual ~MyObjArray() {
 			if (this->_v) {
-				if (_isObj) {
-					for (auto p = this->_v; p != End(); p++)
+				for (auto p = this->_v; p != this->End(); p++)
+					if (*p != 0) {
 						delete* p;
-				}
-				delete[] this->_v;
-				this->_v = 0;
+						p = 0;
+					}
+				
 				puts("~ObjArray");
 			}
 		}
