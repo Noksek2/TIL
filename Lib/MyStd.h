@@ -1,8 +1,10 @@
 
 #pragma once
 #define _CRT_SECURE_NO_WARNINGS
-#include <iostream>
+//#include <iostream>
 #include <Windows.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <locale.h>
 #include <conio.h>
 #define TMP template<typename T>
@@ -26,9 +28,10 @@ namespace MyStd {
 	static void SetInit() {
 		setlocale(LC_ALL, "kor");
 	}
-	
+
 
 	class MyParent {
+	protected:
 	public:
 		virtual ~MyParent() {}
 	};
@@ -38,11 +41,12 @@ namespace MyStd {
 		T* _v;
 		size_t _size;//_size는 stack에선 건드리지 말아야 됨.
 		size_t _capa;//용량
-		bool _isDyn,//동적여부 (잘 안 씀)
+		bool //동적여부 (잘 안 씀)
 			_isDouble,//재할당 2배
-			_isObj//new 사용한 객체여부
-			;
-		inline void _Alloc(size_t sz = 4u, bool isD = true, bool isO = true,bool isStr=false) {
+			_isObj,//new 사용한 객체여부
+			_isLock;//소멸자 쓰지 말라
+		
+		inline void _Alloc(size_t sz = 4u, bool isD = true, bool isO = true, bool isStr = false) {
 			_isObj = isO;
 			_isDouble = isD;
 			if (_isDouble) {
@@ -51,6 +55,7 @@ namespace MyStd {
 			}
 			else _capa = sz;
 			if (isStr)_size = sz;
+			else _size = 0;
 			_v = MyCalloc(T, sz + (size_t)isStr);
 		}
 		inline bool _Expand(size_t expSize) {
@@ -72,20 +77,27 @@ namespace MyStd {
 		}
 		void _ReallocObj() {
 			auto buf = new T[this->_capa];
-			/*for (size_t s = 0u; s < this->_size; s++) {
+			for (size_t s = 0u; s < this->_size; s++) {
 				buf[s] = this->_v[s];
-			}
+
+			}/*
 			this->_v = buf;*/
-			memcpy(buf, _v, sizeof(T) * this->_capa);
-			memset(_v, 0, sizeof(T) * this->_capa);
-			delete _v;
+			//memcpy(buf, _v, sizeof(T) * this->_capa);
+			//memset(_v, 0, sizeof(T) * this->_capa);
+			delete[] _v;
 			this->_v = buf;
 		}
 	public:
 		MyContain() {
+			_isLock = false;
 			puts("Contain");
 		}
-
+		void Lock() {
+			_isLock = true;
+		}
+		void Unlock() {
+			_isLock = false;
+		}
 		const T& operator[](size_t index) const {
 			//if (index < _size)
 			return this->_v[index];
@@ -135,21 +147,33 @@ namespace MyStd {
 				if (p < _end)p++;
 				return *this;
 			}
+			Iter& operator++(int) {
+				return operator++();
+			}
 			Iter& operator--() {
 				if (p >= _beg)p--;
 				return *this;
 			}
+			Iter& operator--(int) {
+				return operator--();
+			}
 			void ToBegin() { p = _beg; }
 			void ToEnd() { p = _end - 1; }
-			wchar_t operator*() {
+			T& operator*() {
+				return *p;
+			}
+			const T& operator*() const{
 				return *p;
 			}
 			bool IsAble() {
 				return p >= _beg && p < _end;
 			}
 		};
+		Iter ToIter() {
+			return Iter(*this);
+		}
 	};
-	
+
 #define BASE MyContain<T>
 	class MyMultiStr : public MyContain<char> {
 	public:
@@ -157,13 +181,15 @@ namespace MyStd {
 			_Alloc(capa, isD, false);
 		}
 		MyMultiStr(const char* str, bool isD = false) {
-			_Alloc(strlen(str)+1, isD, false, true);
+			_Alloc(strlen(str) + 1, isD, false, true);
 			strcpy(_v, str);
 		}
 		void Print() {
 			puts(_v);
 		}
+		
 		virtual ~MyMultiStr() {
+			if (_isLock) { return; }
 			if (_v) { free(_v); _v = 0; }
 			puts("~multistr");
 		}
@@ -171,22 +197,23 @@ namespace MyStd {
 	class MyUniStr :public MyContain<wchar_t> {
 	protected:
 	public:
-		
+
 		MyUniStr(size_t sz = 4u, bool isD = false) {
-			_Alloc(sz, true,false,true); 
+			_Alloc(sz, true, false, true);
 		}
 		MyUniStr(const wchar_t* wstr, bool isD = false) {
-			_Alloc(wcslen(wstr) + 1, true,false,true);
+			_Alloc(wcslen(wstr) + 1, true, false, true);
 			wcscpy(this->_v, wstr);
 		}
 
 
-		
+
 
 		void Print() {
 			_putws(_v);
 		}
 		virtual ~MyUniStr() {
+			if (_isLock) { return; }
 			if (_v) { free(_v); _v = 0; }
 			puts("~unistr");
 		}
@@ -215,6 +242,7 @@ namespace MyStd {
 			BASE::_Alloc(capa);
 		}
 		virtual ~MyObjArray() {
+			if (_isLock) { return; }
 			if (this->_v) {
 				for (auto p = this->_v; p != this->End(); p++)
 					if (*p != 0) {
@@ -230,14 +258,31 @@ namespace MyStd {
 
 	class MyFile :public MyParent {
 	protected:
-		HANDLE _hfile;
+		int* _hfile;
+		bool _isLock;
 	public:
-		
 		MyFile() {
-			puts("MyFile");
+			_isLock = false;
+			_hfile = 0;
+			puts("MyFile(non)");
 		}
+		MyFile(int n) {
+			_isLock = false;
+			_hfile = new int[n];
+			puts("MyFile");
+		} 
+		void Set(MyFile&& file){
+			_hfile = file._hfile;
+			//file._hfile = 0;
+		}
+		void Lock() { _isLock = true; }
+		void Unlock() { _isLock = false; }
 		~MyFile() {
-			puts("~myfile");
+			if (_hfile) {
+				puts("~myfile");
+				delete[] _hfile;
+				_hfile = 0;
+			}
 		}
 	};
 
@@ -245,7 +290,7 @@ namespace MyStd {
 	class AutoRelease {
 		MyObjArray<MyParent*>* obj;
 	public:
-		AutoRelease() { obj = new MyObjArray<MyParent*>(4u); }
+		AutoRelease() { obj = new MyObjArray<MyParent*>(); }
 		void Add(MyParent* o) {
 			obj->Add(o);
 		}
@@ -253,5 +298,7 @@ namespace MyStd {
 			delete obj;
 		}
 	};
-
+	/*
+	
+	*/
 };
